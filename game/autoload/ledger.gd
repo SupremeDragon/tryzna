@@ -1,67 +1,65 @@
 extends Node
-## Реєстр діянь — хребет усієї трилогії.
+## Реєстр діянь ГОЛОВНОГО ГЕРОЯ — тонка обгортка над `DeedLedger`.
 ##
-## Це НЕ карма зі шкалою «добро/зло». Це список. Гра просто записує, що ти зробив,
-## і ніколи не показує оцінки. Оцінку один раз зачитає Воротар наприкінці Акту II.
-##
-## Теги потрібні лише Акту II — вони визначать, у який шар Ниці впаде гравець.
+## Уся логіка живе в `core/soul/deed_ledger.gd`, бо в Акті III такий реєстр
+## потрібен кожній названій людині, а не тільки гравцю. Тут лишається лише те,
+## що справді глобальне: чия саме це сторінка, звідки береться рік, і хто
+## розповідає про запис решті гри.
 
-const TAGS: Array[StringName] = [
-	&"насильство",
-	&"милосердя",
-	&"брехня",
-	&"віра",
-	&"звязок",
-	&"байдужість",
-]
+const TAGS: Array[StringName] = DeedLedger.TAGS
 
-var _deeds: Array[Dictionary] = []
+var hero: DeedLedger = DeedLedger.new()
 
 
-## Записати вчинок. `tags` мають бути з TAGS.
-func record(id: StringName, text: String, tags: Array[StringName] = [], weight: float = 1.0) -> void:
-	for tag: StringName in tags:
-		if tag not in TAGS:
-			push_warning("Реєстр: невідомий тег «%s» у вчинку «%s»." % [tag, id])
+func _ready() -> void:
+	hero.deed_recorded.connect(_on_deed_recorded)
 
-	var deed: Dictionary = {
-		"id": String(id),
-		"text": text,
-		"year": GameState.year,
-		"tags": tags.map(func(t: StringName) -> String: return String(t)),
-		"weight": weight,
-	}
-	_deeds.append(deed)
-	EventBus.deed_recorded.emit(deed)
+
+## Рік підставляється тут: `core/` не має права знати про GameState.
+func record(
+	id: StringName, text: String,
+	tags: Array[StringName] = [], weight: float = 1.0
+) -> void:
+	hero.record(id, text, GameState.year, tags, weight)
+
+
+## Молитва Ости-смертної. Пишемо вже в Акті I: у Акті III якийсь бог
+## читатиме ЇЇ сторінку — див. docs/07-висі-геймплей.md, §13.
+func record_prayer(id: StringName, about: String, for_self: bool = true) -> void:
+	hero.record_prayer(id, about, GameState.year, for_self)
 
 
 func deeds() -> Array[Dictionary]:
-	return _deeds.duplicate(true)
+	return hero.deeds.duplicate(true)
 
 
 func count() -> int:
-	return _deeds.size()
+	return hero.count()
 
 
-## Сума ваг за тегом. Використає Акт II.
+func prayer_count() -> int:
+	return hero.prayer_count()
+
+
+func prayers_for_self() -> int:
+	return hero.prayers_for_self()
+
+
 func weight_of(tag: StringName) -> float:
-	var total: float = 0.0
-	for deed: Dictionary in _deeds:
-		if String(tag) in (deed.get("tags", []) as Array):
-			total += float(deed.get("weight", 1.0))
-	return total
+	return hero.weight_of(tag)
 
 
-func to_array() -> Array:
-	return _deeds.duplicate(true)
+func to_dict() -> Dictionary:
+	return hero.to_dict()
 
 
-func from_array(data: Array) -> void:
-	_deeds.clear()
-	for entry: Variant in data:
-		if entry is Dictionary:
-			_deeds.append(entry as Dictionary)
+func from_dict(data: Dictionary) -> void:
+	hero.from_dict(data)
 
 
 func clear() -> void:
-	_deeds.clear()
+	hero.clear()
+
+
+func _on_deed_recorded(deed: Dictionary) -> void:
+	EventBus.deed_recorded.emit(deed)

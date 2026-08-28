@@ -35,6 +35,8 @@ func _run() -> void:
 	_test_attack_phases()
 	_test_combatant()
 	_test_enemy_always_telegraphs()
+	_test_input_map()
+	_test_deed_ledger()
 
 
 func _check(condition: bool, what: String) -> void:
@@ -99,6 +101,12 @@ func _test_ledger() -> void:
 	_check(Ledger.count() == 2, "записано два вчинки")
 	_check(is_equal_approx(Ledger.weight_of(&"насильство"), 2.0), "вага за тегом рахується")
 	_check(is_equal_approx(Ledger.weight_of(&"брехня"), 0.0), "невикористаний тег дає нуль")
+
+	Ledger.record_prayer(&"pray_rain", "про дощ", true)
+	Ledger.record_prayer(&"pray_daughter", "за доньку", false)
+	Ledger.record_prayer(&"pray_self", "про себе", true)
+	_check(Ledger.prayer_count() == 3, "молитовний слід пишеться")
+	_check(Ledger.prayers_for_self() == 2, "видно, скільки молитов було про себе")
 	Ledger.clear()
 
 
@@ -109,6 +117,7 @@ func _test_save_roundtrip() -> void:
 	GameState.year = 41
 	GameState.believers = 17
 	Ledger.record(&"test_altar", "Побудував вівтар на роздоріжжі", [&"віра"], 1.0)
+	Ledger.record_prayer(&"test_pray", "про врожай", true)
 
 	_check(SaveSystem.save_to(0) == OK, "збереження записалося")
 
@@ -122,6 +131,7 @@ func _test_save_roundtrip() -> void:
 	_check(GameState.year == 41, "рік відновлено")
 	_check(GameState.believers == 17, "кількість вірян відновлена")
 	_check(Ledger.count() == 1, "Реєстр діянь пережив збереження")
+	_check(Ledger.prayer_count() == 1, "молитовний слід пережив збереження")
 
 	SaveSystem.erase(0)
 	Ledger.clear()
@@ -388,3 +398,71 @@ func _test_enemy_always_telegraphs() -> void:
 	# Приголомшений ворог не діє.
 	brain.tick(1.0 / 60.0, here, close, true)
 	_check(brain.state == EnemyBrain.State.IDLE, "приголомшення збиває замах")
+
+
+func _has_event(action: StringName, type_name: String) -> bool:
+	for event: InputEvent in InputMap.action_get_events(action):
+		if event.get_class() == type_name:
+			return true
+	return false
+
+
+func _test_input_map() -> void:
+	print("Мапа керування:")
+	# Серіалізацію подій у project.godot ми пишемо руками, тож єдиний спосіб
+	# упевнитися, що вона розібралася, — спитати саму гру.
+	var required: Array[StringName] = [
+		&"move_left", &"move_right", &"move_up", &"move_down",
+		&"jump", &"attack", &"ability", &"interact",
+		&"debug_die", &"debug_live", &"debug_ascend", &"quit_game",
+	]
+	var missing: Array[String] = []
+	for action: StringName in required:
+		if not InputMap.has_action(action):
+			missing.append(String(action))
+	_check(missing.is_empty(), "усі дії на місці (немає: %s)" % ", ".join(missing))
+
+	_check(_has_event(&"move_left", "InputEventKey"), "рух ліворуч є на клавіатурі")
+	_check(_has_event(&"move_left", "InputEventJoypadMotion"), "рух ліворуч є на стіку")
+	_check(_has_event(&"move_left", "InputEventJoypadButton"), "рух ліворуч є на хрестовині")
+
+	_check(_has_event(&"attack", "InputEventKey"), "удар є на клавіатурі")
+	_check(_has_event(&"attack", "InputEventMouseButton"), "удар є на миші")
+	_check(_has_event(&"attack", "InputEventJoypadButton"), "удар є на геймпаді")
+
+	_check(_has_event(&"jump", "InputEventJoypadButton"), "пробіл продубльовано на геймпаді")
+	_check(_has_event(&"ability", "InputEventJoypadButton"), "відштовх є на геймпаді")
+	_check(_has_event(&"interact", "InputEventJoypadButton"), "взаємодія є на геймпаді")
+
+
+func _test_deed_ledger() -> void:
+	print("Реєстр як окрема душа:")
+	# Головне, заради чого робився винос: реєстрів має бути БАГАТО.
+	var gnat := DeedLedger.new()
+	var oksana := DeedLedger.new()
+
+	gnat.record(&"bread", "Дав хліб жебраку", 19, [&"милосердя"], 1.0)
+	gnat.record(&"beat", "Побив наймита", 31, [&"насильство"], 2.0)
+	oksana.record(&"lie", "Збрехала матері", 21, [&"брехня"], 1.0)
+
+	_check(gnat.count() == 2 and oksana.count() == 1, "у кожної душі свій список")
+	_check(is_equal_approx(gnat.weight_of(&"насильство"), 2.0), "ваги рахуються окремо")
+	_check(is_zero_approx(oksana.weight_of(&"насильство"), ), "чужі вчинки не протікають")
+
+	# Молитовний слід — те, за чим бог відрізняє прохача від людини.
+	gnat.record_prayer(&"p1", "про дощ", 33, true)
+	gnat.record_prayer(&"p2", "про дощ", 34, true)
+	gnat.record_prayer(&"p3", "за доньку", 35, false)
+	_check(gnat.prayer_count() == 3, "молитви пишуться")
+	_check(gnat.prayers_for_self() == 2, "видно, скільки було про себе")
+	_check(gnat.prayers_for_others() == 1, "і скільки за інших")
+
+	# Сторінку душі можна перенести цілком — це знадобиться Акту III.
+	var copy := DeedLedger.new()
+	copy.from_dict(gnat.to_dict())
+	_check(copy.count() == 2 and copy.prayer_count() == 3, "сторінка переноситься цілком")
+	_check(is_equal_approx(copy.weight_of(&"милосердя"), 1.0), "теги переносяться теж")
+
+	# Ядро не знає ні про GameState, ні про EventBus: рік приходить ззовні.
+	var deed: Dictionary = copy.record(&"x", "Щось зробив", 99, [], 1.0)
+	_check(int(deed.get("year", 0)) == 99, "рік передається ззовні, а не береться з автолоада")

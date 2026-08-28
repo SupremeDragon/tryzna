@@ -3,7 +3,8 @@ extends Node
 ##
 ## ВАЖЛИВО: тут не місце для посилань на вузли сцени. Тільки дані.
 
-const SAVE_VERSION: int = 1
+## 2 — Реєстр діянь переїхав у DeedLedger і отримав молитовний слід.
+const SAVE_VERSION: int = 2
 
 ## Вікові стани Ости. Впливають на статистики, спрайт і доступні квести.
 enum Age { CHILD, YOUTH, ADULT, ELDER, OLD }
@@ -28,7 +29,7 @@ func to_dict() -> Dictionary:
 		"chapter": String(chapter),
 		"faith": faith,
 		"believers": believers,
-		"ledger": Ledger.to_array(),
+		"ledger": Ledger.to_dict(),
 	}
 
 
@@ -44,8 +45,19 @@ func from_dict(data: Dictionary) -> bool:
 	chapter = StringName(data.get("chapter", "prologue"))
 	faith = float(data.get("faith", 0.0))
 	believers = int(data.get("believers", 0))
-	Ledger.from_array(data.get("ledger", []) as Array)
+	_load_ledger(data.get("ledger", {}), version)
 	return true
+
+
+## Версія 1 зберігала реєстр простим масивом вчинків, без молитов.
+## Читати старі збереження ми зобовʼязані: файл гравця переживе Акт I.
+func _load_ledger(raw: Variant, version: int) -> void:
+	if version <= 1 and raw is Array:
+		Ledger.from_dict({"deeds": raw, "prayers": []})
+	elif raw is Dictionary:
+		Ledger.from_dict(raw as Dictionary)
+	else:
+		Ledger.clear()
 
 
 func age_label() -> String:
