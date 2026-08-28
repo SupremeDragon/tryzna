@@ -66,6 +66,39 @@ class Wanderer extends RefCounted:
 			0.0
 		)
 
+## Смуга заднього плану. Рухається повільніше за світ — і від цього світ
+## здається глибоким, хоча жодної глибини в ньому немає.
+##
+## `parallax`: 0 — шар приклеєний до камери (нескінченно далеко),
+##             1 — живе у світі нарівні з гравцем,
+##           >1 — ближче за гравця (передній план, летить назустріч).
+class Backdrop extends RefCounted:
+	enum Kind { HILLS, BARS, HAZE }
+
+	var parallax: float = 0.3
+	var kind: Kind = Kind.HILLS
+	var color: Color = Color.GRAY
+	var lift: float = 0.0        # на скільки підняти над горизонтом
+	var amplitude: float = 120.0 # висота горбів / довжина ґрат
+	var wavelength: float = 520.0
+	var phase: float = 0.0
+	var thickness: float = 90.0  # для HAZE: піврозмах смуги
+
+	func _init(
+		p_parallax: float, p_kind: Kind, p_color: Color,
+		p_lift: float, p_amplitude: float, p_wavelength: float, p_phase: float,
+		p_thickness: float = 90.0
+	) -> void:
+		parallax = p_parallax
+		kind = p_kind
+		color = p_color
+		lift = p_lift
+		amplitude = p_amplitude
+		wavelength = p_wavelength
+		phase = p_phase
+		thickness = p_thickness
+
+
 ## Культ Сліз. Одна атака, завжди з видимим замахом.
 class Enemy extends RefCounted:
 	var pos: Vector3 = Vector3.ZERO
@@ -94,6 +127,10 @@ var _wanderers: Array[Wanderer] = []
 ## Ниць — вузький коридор, Висі — архіпелаг країв.
 var _plates: Array[Rect2] = []
 var _bounds: Rect2 = Rect2()
+
+## Куди можна ходити. Вужче за землю — щоб її край не потрапляв у кадр.
+var _walk_bounds: Rect2 = Rect2()
+var _backdrops: Array[Backdrop] = []
 var _solid_world: SolidWorld = SolidWorld.new()
 
 ## Розвʼязувач, що перехоплює керування посеред складання камери.
@@ -146,6 +183,7 @@ func _load_world(mode: WorldMode.Mode) -> void:
 	_wanderers.clear()
 	_plates.clear()
 	_enemies.clear()
+	_backdrops.clear()
 
 	var spawn: Vector3 = Vector3.ZERO
 	match mode:
@@ -157,6 +195,12 @@ func _load_world(mode: WorldMode.Mode) -> void:
 	for plate: Rect2 in _plates:
 		_bounds = _bounds.merge(plate)
 
+	var inset: float = minf(700.0, _bounds.size.x * 0.25)
+	_walk_bounds = Rect2(
+		_bounds.position.x + inset, _bounds.position.y,
+		_bounds.size.x - inset * 2.0, _bounds.size.y
+	)
+
 	_solid_world.clear()
 	for prop: Prop in _props:
 		if prop.solid:
@@ -166,6 +210,9 @@ func _load_world(mode: WorldMode.Mode) -> void:
 	_mover.position = spawn
 	_mover.velocity = Vector3.ZERO
 	_hero.revive()
+	# revive() дає невразливість, і на респауні це читається як «мене щойно
+	# вдарили». Поява у світі має бути тихою.
+	_hero.invuln_left = 0.0
 	_swing.cancel()
 	_camera.reset_smoothing()
 
@@ -175,7 +222,7 @@ func _build_plyn() -> Vector3:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 20260828
 
-	_plates.append(Rect2(-1600.0, -420.0, 3200.0, 1560.0))
+	_plates.append(Rect2(-2600.0, -420.0, 5200.0, 1560.0))
 
 	# Хати навколо майдану.
 	for i: int in range(6):
@@ -213,6 +260,21 @@ func _build_plyn() -> Vector3:
 			rng.randf_range(0.35, 0.8), rng.randf_range(0.0, TAU)
 		))
 
+	# ПЛИНЬ — паралакс помірний. У трьох чвертях камера ходить в обидва боки,
+	# і далина здебільшого лежить углиб, а не вбік. Три смуги позаду й одна
+	# попереду — цього досить, більше вже не читається.
+	_backdrops.append(Backdrop.new(0.12, Backdrop.Kind.HILLS,
+		Color("39463c"), 250.0, 190.0, 1500.0, 0.0))
+	_backdrops.append(Backdrop.new(0.28, Backdrop.Kind.HILLS,
+		Color("36443b"), 150.0, 140.0, 900.0, 1.7))
+	_backdrops.append(Backdrop.new(0.45, Backdrop.Kind.HILLS,
+		Color("33403a"), 60.0, 100.0, 640.0, 3.3))
+	_backdrops.append(Backdrop.new(0.62, Backdrop.Kind.HAZE,
+		Color(0.75, 0.79, 0.76, 0.20), 30.0, 0.0, 0.0, 0.0, 120.0))
+	# Передній план: летить швидше за гравця. Найдешевший спосіб додати обʼєм.
+	_backdrops.append(Backdrop.new(1.45, Backdrop.Kind.HAZE,
+		Color(0.10, 0.13, 0.11, 0.26), -620.0, 0.0, 0.0, 0.0, 220.0))
+
 	# Культ Сліз прийшов у Балку. Бій живе в Плині: у Ниці його майже немає,
 	# а у Висі немає взагалі — див. docs/03-геймплей.md.
 	_enemies.append(Enemy.new(Vector3(560.0, 120.0, 0.0)))
@@ -230,6 +292,21 @@ func _build_nyts() -> Vector3:
 	# Плита вузька: у профілі глибина все одно не видима, і рівень —
 	# це смуга, а не майдан. Гравець тут не блукає, він ІДЕ.
 	_plates.append(Rect2(-4200.0, -60.0, 8000.0, 120.0))
+
+	# НИЦЬ — паралакс тут працює на повну. Це сайд-скрол, камера їздить
+	# горизонтально, і саме для цього випадку паралакс і вигадали.
+	# Пʼять шарів: від ледь видимого відблиску в глибині до ґрат, що
+	# проносяться перед самим обличчям.
+	_backdrops.append(Backdrop.new(0.06, Backdrop.Kind.HAZE,
+		Color(0.52, 0.17, 0.13, 0.30), 210.0, 0.0, 0.0, 0.0, 190.0))
+	_backdrops.append(Backdrop.new(0.18, Backdrop.Kind.BARS,
+		Color("17181b"), 0.0, 900.0, 210.0, 0.0))
+	_backdrops.append(Backdrop.new(0.38, Backdrop.Kind.BARS,
+		Color("1d1e22"), 0.0, 760.0, 260.0, 1.1))
+	_backdrops.append(Backdrop.new(0.60, Backdrop.Kind.BARS,
+		Color("242529"), 0.0, 620.0, 330.0, 2.4))
+	_backdrops.append(Backdrop.new(1.60, Backdrop.Kind.BARS,
+		Color("0b0c0e"), 0.0, 1400.0, 780.0, 0.6))
 
 	# Ґрати: високі вузькі стовпи ПОЗАДУ гравця (відʼємна глибина, тому
 	# малюються першими). Не суцільні — у профілі їх нічим було б обійти,
@@ -277,6 +354,11 @@ func _build_vys() -> Vector3:
 	_plates.append(Rect2(1250.0, -560.0, 900.0, 540.0))
 	_plates.append(Rect2(-1900.0, 1080.0, 1250.0, 520.0))
 	_plates.append(Rect2(1050.0, 940.0, 1000.0, 640.0))
+
+	# ВИСІ — паралаксу НЕМАЄ, і це не економія, а рішення.
+	# У карти немає глибини. Щойно задній план почне рухатися повільніше,
+	# карта перетвориться на пейзаж — а це рівно те, чого ми уникаємо.
+	# Порожнеча навколо плато мусить бути мертвою.
 
 	# Руїни Ладу: низькі уламки, розкидані без ладу. Іронія навмисна.
 	# Нічого не суцільне: за каноном у Висі взагалі не ходять (див.
@@ -542,6 +624,9 @@ func _update_combat(dt: float) -> void:
 func _collapse() -> void:
 	Ledger.record(&"debug_collapse", "Знепритомніла в бою", [&"насильство"], 0.5)
 	_hero.revive()
+	# revive() дає невразливість, і на респауні це читається як «мене щойно
+	# вдарили». Поява у світі має бути тихою.
+	_hero.invuln_left = 0.0
 	_swing.cancel()
 	_mover.position = Vector3(0.0, 0.0, 0.0)
 	_mover.velocity = Vector3.ZERO
@@ -566,8 +651,8 @@ func _move_enemy(enemy: Enemy, delta: Vector2) -> void:
 
 
 func _clamp_to_world() -> void:
-	_mover.position.x = clampf(_mover.position.x, _bounds.position.x, _bounds.end.x)
-	_mover.position.y = clampf(_mover.position.y, _bounds.position.y, _bounds.end.y)
+	_mover.position.x = clampf(_mover.position.x, _walk_bounds.position.x, _walk_bounds.end.x)
+	_mover.position.y = clampf(_mover.position.y, _walk_bounds.position.y, _walk_bounds.end.y)
 
 
 func _update_hud() -> void:
@@ -582,14 +667,14 @@ func _update_hud() -> void:
 		if enemy.body.is_alive():
 			alive_enemies += 1
 
-	_hud.text = "%s\nглибина: %.2f (силует %.0f%%)   ·   висота: %.2f (карта %.0f%%)\nрух: %s   ·   %s   ·   %s\nжиття: %s   ·   ворогів: %d   ·   відштовх: %s\nперешкод: %d   ·   Реєстр діянь: %d" % [
+	_hud.text = "%s\nглибина: %.2f (силует %.0f%%)   ·   висота: %.2f (карта %.0f%%)\nрух: %s   ·   %s   ·   %s\nжиття: %s   ·   ворогів: %d   ·   відштовх: %s\nперешкод: %d   ·   шарів фону: %d   ·   Реєстр діянь: %d" % [
 		WorldMode.label(),
 		Projector.depth_scale, Projector.flatness() * 100.0,
 		Projector.height_scale, Projector.mapness() * 100.0,
 		WorldMode.solver().label(), state, clock,
 		hearts, alive_enemies,
 		"готовий" if _ability_cd <= 0.0 else "%.1f с" % _ability_cd,
-		_solid_world.count(), Ledger.count(),
+		_solid_world.count(), _backdrops.size(), Ledger.count(),
 	]
 
 
@@ -600,6 +685,7 @@ func _draw() -> void:
 	var mapn: float = Projector.mapness()
 
 	draw_rect(_visible_rect(), _sky)
+	_draw_backdrops(false)
 	for plate: Rect2 in _plates:
 		_draw_plate(plate, flat, mapn)
 
@@ -623,6 +709,9 @@ func _draw() -> void:
 			KIND_WANDERER: _draw_wanderer(_wanderers[int(entry.z)], flat, mapn)
 			KIND_ENEMY: _draw_enemy(_enemies[int(entry.z)], flat, mapn)
 			KIND_PLAYER: _draw_player(flat, mapn)
+
+	# Передній план малюється ПІСЛЯ всіх тіл — він же попереду.
+	_draw_backdrops(true)
 
 	if _veil > 0.001:
 		draw_rect(_visible_rect(), Color(_veil_color, _veil))
@@ -682,6 +771,79 @@ func _draw_marker(
 	# У момент удару — коротка яскрава спалахана по всій зоні.
 	if hot:
 		draw_rect(rect.grow(6.0), Color(Color.WHITE, 0.45), false, 3.0)
+
+
+## `foreground`: false — усе, що позаду світу; true — те, що попереду нього.
+func _draw_backdrops(foreground: bool) -> void:
+	if _backdrops.is_empty():
+		return
+	var view: Rect2 = _visible_rect()
+	var horizon: float = Projector.project(Vector3(0.0, _bounds.position.y, 0.0)).y
+
+	for layer: Backdrop in _backdrops:
+		if (layer.parallax > 1.0) != foreground:
+			continue
+		# Ось і весь паралакс: шар зміщується назустріч камері тим сильніше,
+		# чим він далі. На екрані це читається як рух із різною швидкістю.
+		var shift: float = _camera.position.x * (1.0 - layer.parallax)
+		var baseline: float = horizon - layer.lift
+
+		match layer.kind:
+			Backdrop.Kind.HILLS:
+				draw_colored_polygon(
+					_hill_polygon(view, shift, baseline, layer), layer.color
+				)
+			Backdrop.Kind.BARS:
+				_draw_bars(view, shift, baseline, layer)
+			Backdrop.Kind.HAZE:
+				# Кілька вкладених смуг замість однієї: край розмивається,
+				# і заграва перестає читатися як намальована лінійкою.
+				var bands: int = 5
+				for band: int in range(bands):
+					var k: float = float(band + 1) / float(bands)
+					var half: float = layer.thickness * k
+					draw_rect(
+						Rect2(Vector2(view.position.x, baseline - half),
+							Vector2(view.size.x, half * 2.0)),
+						Color(layer.color, layer.color.a / float(bands))
+					)
+
+
+func _hill_polygon(view: Rect2, shift: float, baseline: float, layer: Backdrop) -> PackedVector2Array:
+	var points := PackedVector2Array()
+	var step: float = 26.0
+	var x: float = view.position.x
+	while x <= view.end.x:
+		var local: float = x - shift
+		var wave: float = sin(local / layer.wavelength + layer.phase) * 0.6 \
+			+ sin(local / (layer.wavelength * 0.41) + layer.phase * 2.3) * 0.4
+		points.append(Vector2(x, baseline - layer.amplitude * (wave * 0.5 + 0.5)))
+		x += step
+	# Дно пагорбів — сам горизонт. Далина не має права опускатися нижче
+	# за землю: інакше вона заливає низ екрана й з-під неї видно край плити.
+	points.append(Vector2(view.end.x, baseline + layer.lift))
+	points.append(Vector2(view.position.x, baseline + layer.lift))
+	return points
+
+
+func _draw_bars(view: Rect2, shift: float, baseline: float, layer: Backdrop) -> void:
+	var spacing: float = layer.wavelength
+	var index: int = int(floor((view.position.x - shift) / spacing)) - 1
+	var width: float = spacing * 0.26
+	while true:
+		var local: float = float(index) * spacing
+		var x: float = local + shift
+		if x > view.end.x + spacing:
+			break
+		# Детермінована «випадковість»: висота залежить від номера ґрати,
+		# тож шар виглядає однаково при кожному кадрі й кожному запуску.
+		var jitter: float = abs(sin(float(index) * 12.9898 + layer.phase))
+		var height: float = layer.amplitude * (0.45 + jitter * 0.55)
+		draw_rect(
+			Rect2(Vector2(x - width * 0.5, baseline - height), Vector2(width, height)),
+			layer.color
+		)
+		index += 1
 
 
 func _draw_plate(plate: Rect2, flat: float, mapn: float) -> void:

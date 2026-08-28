@@ -55,6 +55,7 @@ func _ready() -> void:
 			printerr("не вдалося зберегти %s (код %d)" % [path, err])
 
 	await _capture_combat(dir)
+	await _capture_parallax(dir)
 
 	print("\nЗнімки: %s" % dir)
 	get_tree().quit(0)
@@ -101,3 +102,37 @@ func _capture_combat(dir: String) -> void:
 	var path: String = dir.path_join("8-combat.png")
 	if image.save_png(path) == OK:
 		print("знято: %-12s  %s" % ["8-combat", "бій — замах ворога" if found else "бій"])
+
+
+## Паралакс на одному кадрі не видно. Тому знімаємо ту саму сцену двічі,
+## зсунувши камеру: якщо шари поїхали з різною швидкістю — воно працює.
+func _capture_parallax(dir: String) -> void:
+	var cam: Camera2D = _main.get_node("Camera2D") as Camera2D
+	cam.position_smoothing_enabled = false
+
+	for world: Dictionary in [
+		{"mode": 2, "name": "nyts", "from": -3000.0, "step": 900.0, "zoom": 0.9},
+		{"mode": 1, "name": "plyn", "from": -700.0, "step": 900.0, "zoom": 0.72},
+	]:
+		var mode: int = int(world["mode"])
+		WorldMode.set_mode(mode as WorldMode.Mode)
+		_main.call("_load_world", mode)
+		_main.call("_refresh_hint")
+		_main.call("_blend_palette", 1.0, mode)
+		Projector.depth_scale = float(WorldMode.DEPTH_FOR[mode])
+		Projector.height_scale = float(WorldMode.HEIGHT_FOR[mode])
+		cam.zoom = Vector2.ONE * float(world["zoom"])
+
+		var mover: RefCounted = _main.get("_mover") as RefCounted
+		for shot: int in range(2):
+			var x: float = float(world["from"]) + float(shot) * float(world["step"])
+			mover.set("position", Vector3(x, 0.0, 0.0))
+			mover.set("velocity", Vector3.ZERO)
+			for _i: int in range(4):
+				await get_tree().physics_frame
+			await RenderingServer.frame_post_draw
+
+			var image: Image = get_viewport().get_texture().get_image()
+			var name: String = "9-parallax-%s-%d.png" % [world["name"], shot + 1]
+			if image.save_png(dir.path_join(name)) == OK:
+				print("знято: %-22s  камера x=%.0f" % [name, x])
