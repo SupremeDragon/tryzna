@@ -53,17 +53,25 @@ cel shading, lens flare, text, logos, UI elements, modern objects.
 
 ---
 
-## Картинка 2 — НИЦЬ. Перший шар
+## Картинка 2 — НИЦЬ. Перший шар `[v2]`
 
 Формат: **16:9**.
-Файл: `raw/nyts_bg_layer1_v01.png`
+Файл: `raw/nyts_bg_layer1_v02.png`
+
+> **Що змінено проти v1 і чому.** У v1 червоний акцент вийшов ледь помітним —
+> а в нас правило «монохром плюс ОДИН колір», і цей один мусить працювати,
+> інакше він не акцент. Ще з'явилася стеля, через яку зал став кінцевим,
+> хоча ґрати мали б іти вгору без кінця.
 
 ```
 An endless flat corridor seen strictly from the side, like a shadow theatre.
-Tall thin vertical stone bars stand in a row across the frame, receding into
-blackness. A single flat floor line runs edge to edge. Ash and dust on the
-ground. Everything reads as silhouette. One dull glow far away in the dark.
-No people. No sky. No horizon. Airless and still.
+Tall thin vertical stone bars stand in a row across the whole frame and
+continue upward past the top edge of the image. A single flat floor line
+runs edge to edge. Grey ash and bone dust drifted against the base of the
+bars. Everything reads as flat silhouette — no depth, no perspective, no
+vanishing point. One dull dried-blood red glow burns in the middle distance:
+it is the only colour anywhere in the image. No people. No sky. No ceiling.
+No horizon. Airless and still.
 Near-monochrome: charcoal, ash grey, soot black, with exactly one accent
 colour — dull dried-blood red. Painterly digital illustration, hand-painted
 texture, visible brush strokes, soft edges, no hard outlines, muted
@@ -75,25 +83,35 @@ cel shading, lens flare, text, logos, UI elements, modern objects.
 
 ---
 
-## Картинка 3 — ВИСІ. Край Ладу
+## Картинка 3 — ВИСІ. Край Ладу `[v2]`
 
 Формат: **16:9**.
-Файл: `raw/vys_bg_kray_v01.png`
+Файл: `raw/vys_bg_kray_v02.png`
+
+> **Що змінено проти v1 і чому.** У v1 по кутах з'явилися **хмари** — саме
+> там, де мали бути інші краї інших рас. Хмари означають небо й атмосферу,
+> а Висі це плато, що висить у порожнечі; вони руйнують не композицію, а
+> сенс. Другорядне: край плато вийшов **рваним папером**, через що кадр
+> читався як «карта на столі», а не «світ згори». Рваний, не прямокутний
+> край — знахідка й лишається, але це має бути **розламаний камінь**.
 
 ```
-A vast flat plateau floating alone in absolute darkness, seen from directly
-overhead like an old drawn map. The plateau surface is pale parchment-
-coloured stone with a faint drafted grid. Scattered across it are the low
-burnt footprints of destroyed buildings, drawn in brown ink. Far away in the
-black void, the pale edges of other distant plateaus. Strictly flat overhead
-view — no perspective, no horizon, no sky.
+A single vast plateau of pale bare stone floating alone in absolute empty
+blackness, seen from directly overhead. Its edges are jagged broken rock,
+raw and cracked, not torn paper. The surface is dust-pale and bare, marked
+with a faint drafted grid, and scattered across it are the dark burnt
+footprints and foundations of destroyed buildings, drawn in brown ink.
+Far away in the blackness, small and dim, the pale shapes of a few other
+plateaus of the same kind. Absolutely nothing else exists around them.
+No clouds. No sky. No atmosphere. No horizon. No stars. Strictly flat
+overhead view, no perspective.
 Aged parchment and pale gold, brown ink linework, surrounded by flat void
 black. Painterly digital illustration, hand-painted texture, visible brush
 strokes, soft edges, no hard outlines, muted desaturated palette, subtle
 film grain, clean readable silhouette, no text, no letters, no watermark,
-no signature. Avoid: anime, manga, 3D render, CGI, photorealistic, neon
-colours, glossy plastic surfaces, hard black outlines, cel shading, lens
-flare, text, logos, UI elements, modern objects.
+no signature. Avoid: clouds, sky, anime, manga, 3D render, CGI,
+photorealistic, neon colours, glossy plastic surfaces, hard black outlines,
+cel shading, lens flare, text, logos, UI elements, modern objects.
 ```
 
 ---
@@ -154,6 +172,23 @@ modern objects.
 
 Якщо хоч одна умова не виконана — **правимо хвіст стилю й перегенеровуємо
 всі чотири**, а не одну невдалу. Інакше замок не замок.
+
+**Важлива відмінність.** Це правило про **стиль**. Помилка в описі змісту
+(зайві хмари, слабкий акцент, не той край) стилю не стосується й
+перегенерації всього не вимагає — виправляється один промпт.
+
+---
+
+## РЕЗУЛЬТАТ `[2026-08-29]`
+
+**Умова 1 — тест глека: ПРОЙДЕНО.** Глек став поруч із селом як з тієї самої
+гри: та сама вохра, той самий приглушений тон, той самий мазок.
+
+**Умова 2 — три світи як три світи: ПРОЙДЕНО** з двома змістовими правками
+(Ниць і Висі, промпти v2 вище).
+
+**Стиль зафіксовано.** Хвіст стилю в [STYLE_PROMPT.txt](STYLE_PROMPT.txt)
+більше не чернетка.
 
 ---
 
