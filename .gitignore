@@ -1,0 +1,16 @@
+# Godot 4
+.godot/
+/game/.godot/
+/game/android/
+/game/export_presets.cfg
+*.translation
+
+# Збірки
+/builds/
+
+# Вихідники арту — важкі, тримаємо локально
+/art_src/raw/
+
+# Система
+Thumbs.db
+desktop.ini

@@ -1,0 +1,7 @@
+painterly digital illustration, muted earthy palette, soft directional light,
+visible brush texture, no hard outlines, cinematic composition,
+slavic folk motifs, melancholic mood, subtle film grain
+
+---
+Це "хвіст стилю". Додаємо його ДО КОЖНОЇ генерації без винятку.
+Змінювати тільки свідомо: після зміни доведеться перегенерувати весь попередній арт.

@@ -1,0 +1,900 @@
+extends Node2D
+## M1 — сірий прототип. Доказ головного концепту «Тризни».
+##
+## Тут немає жодного арту: тільки прямокутники.
+##
+## ТРИ ОКРЕМІ ЛОКАЦІЇ, а не одна з трьома камерами. Це принципово:
+## складання камери відбувається на локації, яку ти ПОКИДАЄШ (твоє село
+## сплющується в силует, поки ти з нього йдеш), а потім вона відступає — і
+## приходить справжній світ призначення. Три такти:
+##
+##   1. МОРФ    — геометрія навколо тебе втрачає вимір
+##   2. ПАУЗА   — ти лежиш плазом у світі, який щойно був живим
+##   3. ПЕРЕХІД — старе відступає, приходить новий світ
+##
+## Керування залежить від світу — див. _hint_for().
+
+const PLAYER_HEIGHT: float = 118.0
+const PLAYER_HALF_WIDTH: float = 26.0
+
+## Такти переходу після завершення морфу, у секундах.
+const BEAT_LIE_STILL: float = 0.45
+const BEAT_VEIL_IN: float = 0.55
+const BEAT_VEIL_OUT: float = 0.75
+
+
+## Сірий бокс: коробка в логічному просторі.
+class Prop extends RefCounted:
+	var pos: Vector3 = Vector3.ZERO  # центр основи
+	var size: Vector2 = Vector2(90.0, 90.0)  # ширина по x, глибина по y
+	var height: float = 140.0
+	var tint: float = 0.0
+	## Чи впирається в неї тіло. Помости в Плині й ґрати позаду в Ниці — ні.
+	var solid: bool = true
+
+	func _init(
+		p_pos: Vector3, p_size: Vector2, p_height: float, p_tint: float,
+		p_solid: bool = true
+	) -> void:
+		pos = p_pos
+		size = p_size
+		height = p_height
+		tint = p_tint
+		solid = p_solid
+
+
+## Хтось, хто ходить своїми справами. Потрібен, щоб було видно, ЧИЙ час стоїть.
+class Wanderer extends RefCounted:
+	var pos: Vector3 = Vector3.ZERO
+	var home: Vector3 = Vector3.ZERO
+	var span: Vector2 = Vector2(200.0, 90.0)
+	var rate: float = 0.6
+	var phase: float = 0.0
+
+	func _init(p_home: Vector3, p_span: Vector2, p_rate: float, p_phase: float) -> void:
+		home = p_home
+		span = p_span
+		rate = p_rate
+		phase = p_phase
+		step(0.0)
+
+	func step(dt: float) -> void:
+		phase += dt * rate
+		pos = Vector3(
+			home.x + sin(phase) * span.x,
+			home.y + cos(phase * 0.7) * span.y,
+			0.0
+		)
+
+## Культ Сліз. Одна атака, завжди з видимим замахом.
+class Enemy extends RefCounted:
+	var pos: Vector3 = Vector3.ZERO
+	var home: Vector3 = Vector3.ZERO
+	var brain: EnemyBrain = EnemyBrain.new()
+	var body: Combatant = Combatant.new(3)
+	var death_fade: float = 0.0
+
+	func _init(p_home: Vector3) -> void:
+		home = p_home
+		pos = p_home
+
+	func plane() -> Vector2:
+		return Vector2(pos.x, pos.y)
+
+
+@onready var _camera: Camera2D = $Camera2D
+@onready var _hud: Label = $HUD/Readout
+@onready var _hint: Label = $HUD/Hint
+
+var _mover: MovementSolver.MoverState = MovementSolver.MoverState.new()
+var _props: Array[Prop] = []
+var _wanderers: Array[Wanderer] = []
+
+## Плити землі в логічних координатах (x, глибина). Плинь — одна суцільна,
+## Ниць — вузький коридор, Висі — архіпелаг країв.
+var _plates: Array[Rect2] = []
+var _bounds: Rect2 = Rect2()
+var _solid_world: SolidWorld = SolidWorld.new()
+
+## Розвʼязувач, що перехоплює керування посеред складання камери.
+var _fold_solver: SideSolver = null
+
+# --- Бій ---
+const DODGE_TIME: float = 0.20
+const DODGE_INVULN: float = 0.16
+const DODGE_COOLDOWN: float = 0.55
+const ABILITY_COOLDOWN: float = 3.0
+const ABILITY_RADIUS: float = 210.0
+const ABILITY_PUSH: float = 260.0
+
+var _enemies: Array[Enemy] = []
+var _hero: Combatant = Combatant.new(4)
+var _swing: AttackState = AttackState.new(0.12, 0.15, 0.25)
+var _dodge_cd: float = 0.0
+var _ability_cd: float = 0.0
+var _ability_flash: float = 0.0
+var _hit_flash: float = 0.0
+
+var _sky: Color = Color.BLACK
+var _ground: Color = Color.DIM_GRAY
+var _accent: Color = Color.WHITE
+
+var _veil: float = 0.0
+var _veil_color: Color = Color.BLACK
+
+const KIND_PROP: int = 0
+const KIND_WANDERER: int = 1
+const KIND_PLAYER: int = 2
+const KIND_ENEMY: int = 3
+
+
+func _ready() -> void:
+	_load_world(WorldMode.current)
+	_sky = WorldMode.sky_color()
+	_ground = WorldMode.ground_color()
+	_accent = WorldMode.accent_color()
+	_camera.zoom = Vector2.ONE * float(WorldMode.ZOOM_FOR[WorldMode.current])
+
+	EventBus.world_fold_finished.connect(_on_fold_finished)
+	_refresh_hint()
+
+
+# --- Три світи ---------------------------------------------------------------
+
+func _load_world(mode: WorldMode.Mode) -> void:
+	_props.clear()
+	_wanderers.clear()
+	_plates.clear()
+	_enemies.clear()
+
+	var spawn: Vector3 = Vector3.ZERO
+	match mode:
+		WorldMode.Mode.PLYN: spawn = _build_plyn()
+		WorldMode.Mode.NYTS: spawn = _build_nyts()
+		WorldMode.Mode.VYS: spawn = _build_vys()
+
+	_bounds = _plates[0]
+	for plate: Rect2 in _plates:
+		_bounds = _bounds.merge(plate)
+
+	_solid_world.clear()
+	for prop: Prop in _props:
+		if prop.solid:
+			_solid_world.add_box(prop.pos, prop.size, prop.height)
+	WorldMode.set_solid_world(_solid_world)
+
+	_mover.position = spawn
+	_mover.velocity = Vector3.ZERO
+	_hero.revive()
+	_swing.cancel()
+	_camera.reset_smoothing()
+
+
+## ПЛИНЬ — «Тиха Балка». Село: розкидані хати, каплиця, помости, люди.
+func _build_plyn() -> Vector3:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 20260828
+
+	_plates.append(Rect2(-1600.0, -420.0, 3200.0, 1560.0))
+
+	# Хати навколо майдану.
+	for i: int in range(6):
+		var x: float = -1250.0 + float(i) * 520.0
+		for j: int in range(3):
+			var y: float = 140.0 + float(j) * 330.0
+			if absf(x) < 320.0 and j == 0:
+				continue  # майдан перед гравцем лишаємо порожнім
+			_props.append(Prop.new(
+				Vector3(x + rng.randf_range(-70.0, 70.0), y, 0.0),
+				Vector2(rng.randf_range(190.0, 290.0), rng.randf_range(170.0, 250.0)),
+				rng.randf_range(70.0, 190.0),
+				rng.randf()
+			))
+
+	# Низькі помости. Не суцільні: через них переступають, їх не обходять.
+	for k: int in range(5):
+		_props.append(Prop.new(
+			Vector3(-1000.0 + float(k) * 500.0, 620.0, 0.0),
+			Vector2(340.0, 300.0), 22.0, 0.15, false
+		))
+
+	# Каплиця й дзвіниці на дальньому краї.
+	for m: int in range(4):
+		_props.append(Prop.new(
+			Vector3(-820.0 + float(m) * 560.0, -280.0, 0.0),
+			Vector2(240.0, 200.0), 360.0 + float(m) * 70.0, 0.85
+		))
+
+	# Селяни. Поки ти живий — вони ходять.
+	for w: int in range(9):
+		_wanderers.append(Wanderer.new(
+			Vector3(-1150.0 + float(w) * 290.0, 260.0 + rng.randf_range(-120.0, 520.0), 0.0),
+			Vector2(rng.randf_range(140.0, 300.0), rng.randf_range(50.0, 140.0)),
+			rng.randf_range(0.35, 0.8), rng.randf_range(0.0, TAU)
+		))
+
+	# Культ Сліз прийшов у Балку. Бій живе в Плині: у Ниці його майже немає,
+	# а у Висі немає взагалі — див. docs/03-геймплей.md.
+	_enemies.append(Enemy.new(Vector3(560.0, 120.0, 0.0)))
+	_enemies.append(Enemy.new(Vector3(-640.0, 380.0, 0.0)))
+
+	return Vector3(0.0, 0.0, 0.0)
+
+
+## НИЦЬ — «Перший шар». Коридор: глибини немає, є тільки довжина й висота.
+## Ліс вертикальних ґрат, уступи, і мертві, що ходять туди-сюди по своїй смузі.
+func _build_nyts() -> Vector3:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 771
+
+	# Плита вузька: у профілі глибина все одно не видима, і рівень —
+	# це смуга, а не майдан. Гравець тут не блукає, він ІДЕ.
+	_plates.append(Rect2(-4200.0, -60.0, 8000.0, 120.0))
+
+	# Ґрати: високі вузькі стовпи ПОЗАДУ гравця (відʼємна глибина, тому
+	# малюються першими). Не суцільні — у профілі їх нічим було б обійти,
+	# і коридор став би непрохідним. Це декорація клітки, а не перешкода.
+	for i: int in range(34):
+		var x: float = -3200.0 + float(i) * 190.0
+		_props.append(Prop.new(
+			Vector3(x + rng.randf_range(-30.0, 30.0), rng.randf_range(-90.0, -40.0), 0.0),
+			Vector2(rng.randf_range(26.0, 54.0), 40.0),
+			rng.randf_range(180.0, 620.0),
+			rng.randf() * 0.4,
+			false
+		))
+
+	# Уступи — суцільні. Висота стрибка ~184, тому все нижче можна взяти.
+	for k: int in range(11):
+		_props.append(Prop.new(
+			Vector3(-2900.0 + float(k) * 560.0, 0.0, 0.0),
+			Vector2(rng.randf_range(240.0, 420.0), 60.0),
+			rng.randf_range(40.0, 150.0),
+			0.9
+		))
+
+	# Мертві. Ходять по своїй смузі вперед-назад і не бачать одне одного.
+	for w: int in range(14):
+		_wanderers.append(Wanderer.new(
+			Vector3(-3000.0 + float(w) * 440.0, 0.0, 0.0),
+			Vector2(rng.randf_range(60.0, 170.0), 0.0),
+			rng.randf_range(0.15, 0.4), rng.randf_range(0.0, TAU)
+		))
+
+	return Vector3(-3000.0, 0.0, 0.0)
+
+
+## ВИСІ — «Край Ладу». Архіпелаг плато в порожнечі. Своє плато — випалене:
+## самі руїни. Сусідні краї цілі, і на них ще щось стоїть.
+func _build_vys() -> Vector3:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4041
+
+	# Край Ладу — центральний, найбільший, і на ньому майже нічого не лишилося.
+	_plates.append(Rect2(-900.0, -100.0, 1800.0, 1000.0))
+	# Сусідні краї інших рас.
+	_plates.append(Rect2(-2500.0, -700.0, 1100.0, 620.0))
+	_plates.append(Rect2(1250.0, -560.0, 900.0, 540.0))
+	_plates.append(Rect2(-1900.0, 1080.0, 1250.0, 520.0))
+	_plates.append(Rect2(1050.0, 940.0, 1000.0, 640.0))
+
+	# Руїни Ладу: низькі уламки, розкидані без ладу. Іронія навмисна.
+	# Нічого не суцільне: за каноном у Висі взагалі не ходять (див.
+	# docs/07, канон 7), і зіткнення тут не має сенсу.
+	for i: int in range(18):
+		_props.append(Prop.new(
+			Vector3(rng.randf_range(-780.0, 780.0), rng.randf_range(0.0, 800.0), 0.0),
+			Vector2(rng.randf_range(90.0, 230.0), rng.randf_range(80.0, 200.0)),
+			rng.randf_range(18.0, 70.0),
+			rng.randf() * 0.3,
+			false
+		))
+
+	# Чужі краї — цілі: там стоять високі споруди, і на карті вони темні.
+	var foreign: Array[Rect2] = [_plates[1], _plates[2], _plates[3], _plates[4]]
+	for plate: Rect2 in foreign:
+		for k: int in range(5):
+			_props.append(Prop.new(
+				Vector3(
+					rng.randf_range(plate.position.x + 120.0, plate.end.x - 120.0),
+					rng.randf_range(plate.position.y + 110.0, plate.end.y - 110.0),
+					0.0
+				),
+				Vector2(rng.randf_range(130.0, 230.0), rng.randf_range(120.0, 200.0)),
+				rng.randf_range(220.0, 430.0),
+				0.8,
+				false
+			))
+
+	# Сутності інших рас. У Висі час стоїть — вони не рухаються ніколи.
+	for w: int in range(7):
+		_wanderers.append(Wanderer.new(
+			Vector3(rng.randf_range(-2200.0, 1900.0), rng.randf_range(-500.0, 1400.0), 0.0),
+			Vector2(90.0, 40.0), 0.2, rng.randf_range(0.0, TAU)
+		))
+
+	return Vector3(0.0, 380.0, 0.0)
+
+
+# --- Переходи ----------------------------------------------------------------
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not event.is_pressed() or event.is_echo():
+		return
+	if event.is_action("quit_game"):
+		get_tree().quit()
+	elif event.is_action("debug_die"):
+		_die()
+	elif event.is_action("debug_live"):
+		_return_to_plyn()
+	elif event.is_action("debug_ascend"):
+		_ascend()
+	elif event.is_action("attack"):
+		_swing.press()
+	elif event.is_action("ability"):
+		_cast_ability()
+
+
+func _die() -> void:
+	if WorldMode.current == WorldMode.Mode.NYTS or WorldMode.is_folding or _veil > 0.0:
+		return
+	Ledger.record(&"debug_death", "Помер(ла) у сірому прототипі", [&"віра"], 1.0)
+	EventBus.player_died.emit(&"debug")
+	_transition(WorldMode.Mode.NYTS, WorldMode.FOLD_DURATION_DEATH, 0.0, Color.BLACK)
+
+
+func _ascend() -> void:
+	if WorldMode.current == WorldMode.Mode.VYS or WorldMode.is_folding or _veil > 0.0:
+		return
+	_transition(
+		WorldMode.Mode.VYS, WorldMode.FOLD_DURATION_ASCENT,
+		WorldMode.ASCENT_HOLD, Color("fff4dc")
+	)
+
+
+func _return_to_plyn() -> void:
+	if WorldMode.current == WorldMode.Mode.PLYN or WorldMode.is_folding or _veil > 0.0:
+		return
+	_transition(WorldMode.Mode.PLYN, WorldMode.FOLD_DURATION_CAST_DOWN, 0.0, Color.BLACK)
+
+
+func _transition(mode: WorldMode.Mode, duration: float, hold: float, veil: Color) -> void:
+	_veil_color = veil
+	WorldMode.fold_to(mode, duration, hold)
+	_tween_camera(mode, duration, hold)
+
+
+func _tween_camera(mode: WorldMode.Mode, duration: float, hold: float) -> void:
+	var zoom: float = float(WorldMode.ZOOM_FOR[mode])
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+	if hold > 0.0:
+		tween.tween_interval(hold)
+	tween.tween_property(_camera, "zoom", Vector2.ONE * zoom, duration)
+	tween.parallel().tween_method(_blend_palette.bind(mode), 0.0, 1.0, duration)
+
+
+## Морф скінчився. Далі — пауза, завіса, підміна локації, поява.
+func _on_fold_finished(mode: int) -> void:
+	_blend_palette(1.0, mode as WorldMode.Mode)
+
+	var tween := create_tween()
+	tween.tween_interval(BEAT_LIE_STILL)
+	tween.tween_method(_set_veil, 0.0, 1.0, BEAT_VEIL_IN)\
+		.set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_CUBIC)
+	tween.tween_callback(func() -> void:
+		_load_world(mode as WorldMode.Mode)
+		_refresh_hint()
+	)
+	tween.tween_method(_set_veil, 1.0, 0.0, BEAT_VEIL_OUT)\
+		.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+
+
+func _set_veil(value: float) -> void:
+	_veil = value
+
+
+func _blend_palette(t: float, mode: WorldMode.Mode) -> void:
+	_sky = WorldMode.sky_color().lerp(WorldMode.SKY_FOR[mode] as Color, t)
+	_ground = WorldMode.ground_color().lerp(WorldMode.GROUND_FOR[mode] as Color, t)
+	_accent = WorldMode.accent_color().lerp(WorldMode.ACCENT_FOR[mode] as Color, t)
+
+
+## Підказка показує тільки те, що працює ТУТ. Стрибок є лише в Ниці.
+func _hint_for(mode: WorldMode.Mode) -> String:
+	match mode:
+		WorldMode.Mode.PLYN:
+			return "WASD — рух   ·   J — удар   ·   Пробіл — ухилення   ·   Q — відштовх"\
+				+ "   ·   K — померти   ·   U — піднестися   ·   Esc"
+		WorldMode.Mode.NYTS:
+			return "A / D — іти   ·   Пробіл — стрибок   ·   L — назад у Плинь   ·   Esc — вихід"
+		WorldMode.Mode.VYS:
+			return "WASD — рух   ·   L — назад у Плинь   ·   Esc — вихід"
+	return ""
+
+
+func _refresh_hint() -> void:
+	_hint.text = _hint_for(WorldMode.current)
+
+
+# --- Симуляція ---------------------------------------------------------------
+
+func _physics_process(delta: float) -> void:
+	var input := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	# Пробіл робить те, що має сенс у цьому світі: у Ниці стрибок (єдиний світ,
+	# де є висота під ногами), деінде — ухилення.
+	var space: bool = Input.is_action_just_pressed("jump")
+	var jump: bool = space and WorldMode.current == WorldMode.Mode.NYTS
+	if space and WorldMode.current != WorldMode.Mode.NYTS:
+		_try_dodge(input)
+
+	# Під час смерті керування підкоряється НОВОМУ світу, щойно глибина
+	# сплющилась наполовину. Гравець фізично відчуває втрату виміру.
+	var solver: MovementSolver = WorldMode.solver()
+	if WorldMode.is_folding and Projector.flatness() > 0.5:
+		if _fold_solver == null:
+			_fold_solver = SideSolver.new(300.0)
+			_fold_solver.world = _solid_world
+		solver = _fold_solver
+	else:
+		_fold_solver = null
+
+	solver.step(_mover, input, jump, delta)
+	_clamp_to_world()
+
+	if WorldMode.time_flowing:
+		for wanderer: Wanderer in _wanderers:
+			wanderer.step(delta)
+
+	_update_combat(delta)
+
+	_camera.position = Projector.project(_mover.position) \
+		+ Vector2(0.0, -PLAYER_HEIGHT * 0.5 * Projector.height_scale)
+	queue_redraw()
+	_update_hud()
+
+
+# --- Бій ---------------------------------------------------------------------
+
+func _try_dodge(input: Vector2) -> void:
+	if _dodge_cd > 0.0 or not _hero.is_alive():
+		return
+	var dir: Vector2 = input if input.length_squared() > 0.001 else _mover.facing_dir
+	WorldMode.solver().start_dash(dir, DODGE_TIME)
+	_hero.invuln_left = maxf(_hero.invuln_left, DODGE_INVULN)
+	_dodge_cd = DODGE_COOLDOWN
+	_swing.cancel()
+
+
+## «Відштовх» — підпис Ости. Вона не воїн: її сила не в лезі, а в тому, щоб
+## зрушити чуже з місця. Шкоди не завдає, збиває замах і розкидає.
+func _cast_ability() -> void:
+	if _ability_cd > 0.0 or not _hero.is_alive():
+		return
+	_ability_cd = ABILITY_COOLDOWN
+	_ability_flash = 0.45
+
+	var origin: Vector2 = Vector2(_mover.position.x, _mover.position.y)
+	for enemy: Enemy in _enemies:
+		if not enemy.body.is_alive():
+			continue
+		var offset: Vector2 = enemy.plane() - origin
+		if offset.length() > ABILITY_RADIUS:
+			continue
+		var push: Vector2 = offset.normalized() * ABILITY_PUSH
+		enemy.pos.x += push.x
+		enemy.pos.y += push.y
+		enemy.body.stagger_left = maxf(enemy.body.stagger_left, 0.9)
+		enemy.brain.interrupt()
+
+
+func _update_combat(dt: float) -> void:
+	_dodge_cd = maxf(_dodge_cd - dt, 0.0)
+	_ability_cd = maxf(_ability_cd - dt, 0.0)
+	_ability_flash = maxf(_ability_flash - dt, 0.0)
+	_hit_flash = maxf(_hit_flash - dt, 0.0)
+
+	_hero.tick(dt)
+	_swing.tick(dt)
+
+	var hero_plane: Vector2 = Vector2(_mover.position.x, _mover.position.y)
+	var hero_foot: Rect2 = WorldMode.solver().foot_of(_mover.position)
+
+	# Удар Ости.
+	if _swing.consume():
+		var box: Rect2 = _swing.box(hero_plane, _mover.facing_dir)
+		for enemy: Enemy in _enemies:
+			if not enemy.body.is_alive():
+				continue
+			if box.intersects(_enemy_foot(enemy)) and enemy.body.take_hit(1, 0.35):
+				var knock: Vector2 = (enemy.plane() - hero_plane).normalized() * 46.0
+				enemy.pos.x += knock.x
+				enemy.pos.y += knock.y
+				enemy.brain.interrupt()
+
+	for enemy: Enemy in _enemies:
+		enemy.body.tick(dt)
+
+		if not enemy.body.is_alive():
+			enemy.death_fade = minf(enemy.death_fade + dt * 1.6, 1.0)
+			continue
+
+		var velocity: Vector2 = enemy.brain.tick(
+			dt, enemy.plane(), hero_plane, enemy.body.is_staggered()
+		)
+		_move_enemy(enemy, velocity * dt)
+
+		if enemy.brain.consume_strike():
+			var reach: Vector2 = enemy.plane() + enemy.brain.facing * 86.0
+			var strike := Rect2(reach - Vector2(52.0, 46.0), Vector2(104.0, 92.0))
+			if strike.intersects(hero_foot) and _hero.take_hit(1, 0.25):
+				_hit_flash = 0.35
+				var knock: Vector2 = enemy.brain.facing * 120.0
+				_mover.position.x += knock.x
+				_mover.position.y += knock.y
+
+	if not _hero.is_alive():
+		_collapse()
+
+
+## Смерть у бою — не смерть персонажа. Ти непритомнієш і втрачаєш час.
+## Сюжетна смерть буває тільки в Розділі 6 — див. docs/03-геймплей.md, §3.
+func _collapse() -> void:
+	Ledger.record(&"debug_collapse", "Знепритомніла в бою", [&"насильство"], 0.5)
+	_hero.revive()
+	_swing.cancel()
+	_mover.position = Vector3(0.0, 0.0, 0.0)
+	_mover.velocity = Vector3.ZERO
+	for enemy: Enemy in _enemies:
+		enemy.pos = enemy.home
+		enemy.brain.interrupt()
+
+
+func _enemy_foot(enemy: Enemy) -> Rect2:
+	return Rect2(enemy.pos.x - 26.0, enemy.pos.y - 22.0, 52.0, 44.0)
+
+
+func _move_enemy(enemy: Enemy, delta: Vector2) -> void:
+	enemy.pos.x += delta.x
+	if _solid_world.overlaps_ground(_enemy_foot(enemy)):
+		enemy.pos.x = _solid_world.resolve_ground(_enemy_foot(enemy), 0, delta.x > 0.0)
+	enemy.pos.y += delta.y
+	if _solid_world.overlaps_ground(_enemy_foot(enemy)):
+		enemy.pos.y = _solid_world.resolve_ground(_enemy_foot(enemy), 1, delta.y > 0.0)
+	enemy.pos.x = clampf(enemy.pos.x, _bounds.position.x, _bounds.end.x)
+	enemy.pos.y = clampf(enemy.pos.y, _bounds.position.y, _bounds.end.y)
+
+
+func _clamp_to_world() -> void:
+	_mover.position.x = clampf(_mover.position.x, _bounds.position.x, _bounds.end.x)
+	_mover.position.y = clampf(_mover.position.y, _bounds.position.y, _bounds.end.y)
+
+
+func _update_hud() -> void:
+	var state: String = "перехід…" if WorldMode.is_folding else "стабільно"
+	var clock: String = "час тече" if WorldMode.time_flowing else "ЧАС СТОЇТЬ"
+	var hearts: String = "".lpad(0)
+	for i: int in _hero.max_hp:
+		hearts += "♥" if i < _hero.hp else "·"
+
+	var alive_enemies: int = 0
+	for enemy: Enemy in _enemies:
+		if enemy.body.is_alive():
+			alive_enemies += 1
+
+	_hud.text = "%s\nглибина: %.2f (силует %.0f%%)   ·   висота: %.2f (карта %.0f%%)\nрух: %s   ·   %s   ·   %s\nжиття: %s   ·   ворогів: %d   ·   відштовх: %s\nперешкод: %d   ·   Реєстр діянь: %d" % [
+		WorldMode.label(),
+		Projector.depth_scale, Projector.flatness() * 100.0,
+		Projector.height_scale, Projector.mapness() * 100.0,
+		WorldMode.solver().label(), state, clock,
+		hearts, alive_enemies,
+		"готовий" if _ability_cd <= 0.0 else "%.1f с" % _ability_cd,
+		_solid_world.count(), Ledger.count(),
+	]
+
+
+# --- Малювання ---------------------------------------------------------------
+
+func _draw() -> void:
+	var flat: float = Projector.flatness()
+	var mapn: float = Projector.mapness()
+
+	draw_rect(_visible_rect(), _sky)
+	for plate: Rect2 in _plates:
+		_draw_plate(plate, flat, mapn)
+
+	# Один список усього, що стоїть на землі, відсортований по глибині.
+	# x = ключ сортування, y = тип обʼєкта, z = індекс.
+	_draw_ground_markers(mapn)
+
+	var order: Array[Vector3] = []
+	for i: int in _props.size():
+		order.append(Vector3(_props[i].pos.y, float(KIND_PROP), float(i)))
+	for i: int in _wanderers.size():
+		order.append(Vector3(_wanderers[i].pos.y, float(KIND_WANDERER), float(i)))
+	for i: int in _enemies.size():
+		order.append(Vector3(_enemies[i].pos.y, float(KIND_ENEMY), float(i)))
+	order.append(Vector3(_mover.position.y, float(KIND_PLAYER), 0.0))
+	order.sort_custom(func(a: Vector3, b: Vector3) -> bool: return a.x > b.x)
+
+	for entry: Vector3 in order:
+		match int(entry.y):
+			KIND_PROP: _draw_prop(_props[int(entry.z)], flat, mapn)
+			KIND_WANDERER: _draw_wanderer(_wanderers[int(entry.z)], flat, mapn)
+			KIND_ENEMY: _draw_enemy(_enemies[int(entry.z)], flat, mapn)
+			KIND_PLAYER: _draw_player(flat, mapn)
+
+	if _veil > 0.001:
+		draw_rect(_visible_rect(), Color(_veil_color, _veil))
+
+
+## Зони ударів — це РОЗМІТКА НА ЗЕМЛІ, і малювати її треба разом із землею,
+## а не разом із тілами. Інакше вона то виринає перед бійцями, то ховається
+## за ними залежно від глибини, і бій перестає читатися.
+func _draw_ground_markers(mapn: float) -> void:
+	if mapn > 0.9:
+		return
+
+	for enemy: Enemy in _enemies:
+		if not enemy.body.is_alive():
+			continue
+		var warn: float = enemy.brain.windup_ratio()
+		if warn <= 0.0:
+			continue
+		var reach: Vector3 = enemy.pos + Vector3(
+			enemy.brain.facing.x * 86.0, enemy.brain.facing.y * 86.0, 0.0
+		)
+		_draw_marker(
+			reach, Vector2(104.0, 92.0), Color("ff6a4d"),
+			warn, enemy.brain.is_striking()
+		)
+
+	if _swing.is_busy():
+		var box: Rect2 = _swing.box(
+			Vector2(_mover.position.x, _mover.position.y), _mover.facing_dir
+		)
+		_draw_marker(
+			Vector3(box.get_center().x, box.get_center().y, 0.0), box.size,
+			_accent.lightened(0.35), _swing.windup_ratio(), _swing.is_active()
+		)
+
+	if _ability_flash > 0.0:
+		var origin: Vector2 = Projector.project(Vector3(_mover.position.x, _mover.position.y, 0.0))
+		var alpha: float = _ability_flash / 0.45
+		draw_set_transform(origin, 0.0, Vector2(1.0, Projector.depth_scale))
+		draw_arc(Vector2.ZERO, ABILITY_RADIUS * (1.4 - alpha * 0.4), 0.0, TAU, 64,
+			Color(_accent.lightened(0.4), alpha * 0.9), 7.0)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+## Одна мітка удару. Заливка наливається разом із замахом, обвід товщає —
+## гравець читає «зараз бахне» двома способами одночасно.
+func _draw_marker(
+	at: Vector3, size: Vector2, tint: Color, ripeness: float, hot: bool
+) -> void:
+	var center: Vector2 = Projector.project(at)
+	var screen := Vector2(size.x, size.y * Projector.depth_scale)
+	var rect := Rect2(center - screen * 0.5, screen)
+
+	draw_rect(rect, Color(tint, 0.10 + ripeness * 0.30 if not hot else 0.60))
+	draw_rect(rect, Color(tint, 0.45 + ripeness * 0.55), false, 2.0 + ripeness * 3.0)
+
+	# У момент удару — коротка яскрава спалахана по всій зоні.
+	if hot:
+		draw_rect(rect.grow(6.0), Color(Color.WHITE, 0.45), false, 3.0)
+
+
+func _draw_plate(plate: Rect2, flat: float, mapn: float) -> void:
+	var view: Rect2 = _visible_rect()
+	var far_y: float = Projector.project(Vector3(0.0, plate.position.y, 0.0)).y
+	var near_y: float = Projector.project(Vector3(0.0, plate.end.y, 0.0)).y
+
+	# Коли глибина схлопується, плита вироджується в лінію — і земля мусить
+	# долити екран донизу, інакше під підлогою сайд-скрола зяяло б небо.
+	var bottom: float = lerpf(near_y, view.end.y, flat)
+	var rect := Rect2(
+		Vector2(plate.position.x, far_y),
+		Vector2(plate.size.x, maxf(bottom - far_y, 2.0))
+	)
+	draw_rect(rect, _ground)
+
+	# Смуга на дальньому краї: у трьох чвертях — далина, у профілі — стіна позаду.
+	if mapn < 0.98:
+		draw_rect(
+			Rect2(Vector2(rect.position.x, far_y - 26.0), Vector2(rect.size.x, 26.0)),
+			Color(_ground.darkened(0.35), 1.0 - mapn)
+		)
+
+	_draw_grid_on(plate, flat, mapn)
+
+	# Обрис краю. Світ бога — архіпелаг плато, а не безкраїй простір.
+	if mapn > 0.02:
+		draw_rect(rect, Color(_accent, mapn * 0.75), false, 4.0)
+
+	# Лінія підлоги для профілю.
+	if flat > 0.02:
+		draw_line(
+			Vector2(rect.position.x, far_y), Vector2(rect.end.x, far_y),
+			Color(_accent, flat * 0.8), 3.0
+		)
+
+
+func _draw_grid_on(plate: Rect2, flat: float, mapn: float) -> void:
+	# Сітка гасне разом зі сплющенням у силует — видно, як іде розташування.
+	# І навпаки розгоряється на карті: там сітка доречна, це креслення.
+	var alpha: float = (1.0 - flat) * 0.20 * (1.0 - mapn) + mapn * 0.30
+	if alpha <= 0.005:
+		return
+	var col := Color(_accent.r, _accent.g, _accent.b, alpha)
+	var step: float = WorldSpace.CELL * 2.0
+
+	var y: float = ceilf(plate.position.y / step) * step
+	while y <= plate.end.y:
+		draw_line(
+			Projector.project(Vector3(plate.position.x, y, 0.0)),
+			Projector.project(Vector3(plate.end.x, y, 0.0)), col, 2.0
+		)
+		y += step
+
+	var x: float = ceilf(plate.position.x / step) * step
+	while x <= plate.end.x:
+		draw_line(
+			Projector.project(Vector3(x, plate.position.y, 0.0)),
+			Projector.project(Vector3(x, plate.end.y, 0.0)), col, 2.0
+		)
+		x += step
+
+
+func _draw_prop(prop: Prop, flat: float, mapn: float) -> void:
+	var hw: float = prop.size.x * 0.5
+	var hd: float = prop.size.y * 0.5
+	var base: Vector3 = prop.pos
+
+	var side_col: Color = _ground.lightened(0.18 + prop.tint * 0.12).darkened(0.35)
+	var face_col: Color = _ground.lightened(0.30 + prop.tint * 0.18)
+	var top_col: Color = _ground.lightened(0.52 + prop.tint * 0.20)
+
+	# У сірому боксі одразу видно, крізь що можна пройти.
+	var pass_through: float = 1.0 if prop.solid else 0.45
+
+	# На карті висоту не видно — її треба ЧИТАТИ. Чим вища споруда, тим
+	# темніша її основа: звичайна рельєфна карта, зрозуміла без пояснень.
+	var elevation: float = clampf(prop.height / 430.0, 0.0, 1.0)
+	top_col = top_col.lerp(_ground.darkened(0.28), elevation * mapn)
+
+	var top: PackedVector2Array = PackedVector2Array([
+		Projector.project(base + Vector3(-hw, -hd, prop.height)),
+		Projector.project(base + Vector3(hw, -hd, prop.height)),
+		Projector.project(base + Vector3(hw, hd, prop.height)),
+		Projector.project(base + Vector3(-hw, hd, prop.height)),
+	])
+	var front: PackedVector2Array = PackedVector2Array([
+		Projector.project(base + Vector3(-hw, hd, prop.height)),
+		Projector.project(base + Vector3(hw, hd, prop.height)),
+		Projector.project(base + Vector3(hw, hd, 0.0)),
+		Projector.project(base + Vector3(-hw, hd, 0.0)),
+	])
+	var side: PackedVector2Array = PackedVector2Array([
+		Projector.project(base + Vector3(hw, -hd, prop.height)),
+		Projector.project(base + Vector3(hw, hd, prop.height)),
+		Projector.project(base + Vector3(hw, hd, 0.0)),
+		Projector.project(base + Vector3(hw, -hd, 0.0)),
+	])
+
+	if flat < 0.98 and mapn < 0.99:
+		draw_colored_polygon(side, Color(side_col, (1.0 - flat) * (1.0 - mapn) * pass_through))
+	if flat < 0.98:
+		draw_colored_polygon(top, Color(top_col, (1.0 - flat * 0.85) * pass_through))
+	if mapn < 0.99:
+		draw_colored_polygon(front, Color(face_col, (1.0 - mapn) * pass_through))
+
+	if mapn > 0.02:
+		var outline: PackedVector2Array = top.duplicate()
+		outline.append(top[0])
+		draw_polyline(
+			outline, Color(_accent, mapn * (0.35 + elevation * 0.5)), 1.5 + elevation * 5.0
+		)
+
+
+func _draw_wanderer(w: Wanderer, flat: float, mapn: float) -> void:
+	var col: Color = _ground.lightened(0.62)
+	var feet: Vector2 = Projector.project(w.pos)
+	var head: Vector2 = Projector.project(w.pos + Vector3(0.0, 0.0, 78.0))
+
+	if mapn < 0.99:
+		draw_rect(
+			Rect2(Vector2(feet.x - 13.0, head.y), Vector2(26.0, feet.y - head.y)),
+			Color(col, 1.0 - mapn)
+		)
+	# На карті — крапка тушшю. Бог не бачить облич, тільки положення.
+	if mapn > 0.02:
+		draw_circle(feet, 8.0, Color(_accent, mapn * 0.85))
+
+
+## Ворог. Найважливіше тут — ТЕЛЕГРАФ: зона майбутнього удару наливається
+## кольором ще до самого удару, і гравець устигає відскочити. Без цього бій
+## читається як несправедливий, скільки б кадрів анімації в нього не було.
+func _draw_enemy(enemy: Enemy, _flat: float, mapn: float) -> void:
+	if mapn > 0.9:
+		return
+
+	var alive: bool = enemy.body.is_alive()
+	var fade: float = (1.0 - enemy.death_fade) if not alive else 1.0
+	if fade <= 0.01:
+		return
+
+	var feet: Vector2 = Projector.project(enemy.pos)
+	var head: Vector2 = Projector.project(enemy.pos + Vector3(0.0, 0.0, 104.0))
+	var col: Color = Color("8d3b3b")
+
+	# Тінь.
+	draw_set_transform(Projector.project(Vector3(enemy.pos.x, enemy.pos.y, 0.0)),
+		0.0, Vector2(1.0, 0.45))
+	draw_circle(Vector2.ZERO, 30.0, Color(0.0, 0.0, 0.0, 0.3 * fade))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+	var flash: bool = enemy.body.invuln_left > 0.32
+	var body_col: Color = Color.WHITE if flash else col
+	var rect := Rect2(
+		Vector2(feet.x - 24.0, head.y), Vector2(48.0, feet.y - head.y)
+	)
+	draw_rect(rect, Color(body_col, fade))
+	draw_rect(rect, Color(body_col.darkened(0.45), fade), false, 3.0)
+
+	# Життя ворога — риски над головою.
+	if alive:
+		for i: int in enemy.body.max_hp:
+			var filled: bool = i < enemy.body.hp
+			draw_rect(
+				Rect2(Vector2(feet.x - 24.0 + float(i) * 17.0, head.y - 18.0), Vector2(13.0, 5.0)),
+				Color(col.lightened(0.5) if filled else col.darkened(0.6), fade)
+			)
+
+
+func _draw_player(flat: float, mapn: float) -> void:
+	var p: Vector3 = _mover.position
+
+	# Тінь на землі. У профілі стискається в риску, на карті зникає:
+	# у Висі світло звідусіль, тіней немає.
+	if mapn < 0.9:
+		var shadow_center: Vector2 = Projector.project(Vector3(p.x, p.y, 0.0))
+		var lift: float = clampf(p.z / 260.0, 0.0, 1.0)
+		draw_set_transform(shadow_center, 0.0, Vector2(1.0, lerpf(0.47, 0.09, flat)))
+		draw_circle(
+			Vector2.ZERO, 34.0 * (1.0 - lift * 0.35),
+			Color(0.0, 0.0, 0.0, 0.35 * (1.0 - lift * 0.5) * (1.0 - mapn))
+		)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+	var feet: Vector2 = Projector.project(p)
+	var head: Vector2 = Projector.project(p + Vector3(0.0, 0.0, PLAYER_HEIGHT))
+
+	if mapn < 0.99:
+		var body := Rect2(
+			Vector2(feet.x - PLAYER_HALF_WIDTH, head.y),
+			Vector2(PLAYER_HALF_WIDTH * 2.0, feet.y - head.y)
+		)
+		var tint: Color = _accent
+		if _hero.invuln_left > 0.0:
+			# Мигтіння невразливості: видно і те, що влучили, і те, що зараз не вб\'ють.
+			tint = _accent.lerp(Color.WHITE, 0.5 + 0.5 * sin(_hero.invuln_left * 60.0))
+		draw_rect(body, Color(tint, 1.0 - mapn))
+		draw_rect(body, Color(tint.darkened(0.5), 1.0 - mapn), false, 3.0)
+
+		var eye_x: float = feet.x + _mover.facing * PLAYER_HALF_WIDTH * 0.45
+		draw_line(
+			Vector2(eye_x, lerpf(feet.y, head.y, 0.78)),
+			Vector2(eye_x, lerpf(feet.y, head.y, 0.62)),
+			Color(_sky, 1.0 - mapn), 5.0
+		)
+
+	# На карті ти — не тіло, а мітка. Бог не має тіла в кадрі.
+	if mapn > 0.02:
+		draw_circle(feet, 26.0, Color(_ground.lightened(0.75), mapn))
+		draw_circle(feet, 14.0, Color(_accent, mapn))
+		draw_arc(feet, 46.0, 0.0, TAU, 48, Color(_accent, mapn * 0.7), 3.5)
+
+
+func _visible_rect() -> Rect2:
+	var size: Vector2 = get_viewport_rect().size / _camera.zoom
+	return Rect2(_camera.position - size * 0.75, size * 1.5)
