@@ -73,7 +73,7 @@ class Wanderer extends RefCounted:
 ##             1 — живе у світі нарівні з гравцем,
 ##           >1 — ближче за гравця (передній план, летить назустріч).
 class Backdrop extends RefCounted:
-	enum Kind { HILLS, BARS, HAZE }
+	enum Kind { HILLS, BARS, HAZE, TEXTURE }
 
 	var parallax: float = 0.3
 	var kind: Kind = Kind.HILLS
@@ -83,6 +83,22 @@ class Backdrop extends RefCounted:
 	var wavelength: float = 520.0
 	var phase: float = 0.0
 	var thickness: float = 90.0  # для HAZE: піврозмах смуги
+
+	## Для TEXTURE: сам малюнок, його масштаб і те, наскільки він притемнений.
+	## Темряву накладаємо ТУТ, а не в картинці: згенерувати шар чорним означало б
+	## зробити його невирізуваним, бо чорне від чорного не відділити.
+	var texture: Texture2D = null
+	var scale: float = 1.0
+
+	## Шар із текстури. Темрява накладається тінтом, а не запікається в картинку.
+	static func textured(
+		p_parallax: float, p_texture: Texture2D, p_scale: float,
+		p_tint: Color, p_lift: float = 0.0
+	) -> Backdrop:
+		var layer := Backdrop.new(p_parallax, Kind.TEXTURE, p_tint, p_lift, 0.0, 0.0, 0.0)
+		layer.texture = p_texture
+		layer.scale = p_scale
+		return layer
 
 	func _init(
 		p_parallax: float, p_kind: Kind, p_color: Color,
@@ -131,6 +147,9 @@ var _bounds: Rect2 = Rect2()
 ## Куди можна ходити. Вужче за землю — щоб її край не потрапляв у кадр.
 var _walk_bounds: Rect2 = Rect2()
 var _backdrops: Array[Backdrop] = []
+
+## Намальована підлога. Є тільки там, де рівень справді площинний.
+var _floor_texture: Texture2D = null
 var _solid_world: SolidWorld = SolidWorld.new()
 
 ## Розвʼязувач, що перехоплює керування посеред складання камери.
@@ -200,6 +219,9 @@ func _load_world(mode: WorldMode.Mode) -> void:
 		_bounds.position.x + inset, _bounds.position.y,
 		_bounds.size.x - inset * 2.0, _bounds.size.y
 	)
+
+	_floor_texture = load("res://art/nyts/floor.png") as Texture2D \
+		if mode == WorldMode.Mode.NYTS else null
 
 	_solid_world.clear()
 	for prop: Prop in _props:
@@ -297,16 +319,24 @@ func _build_nyts() -> Vector3:
 	# горизонтально, і саме для цього випадку паралакс і вигадали.
 	# Пʼять шарів: від ледь видимого відблиску в глибині до ґрат, що
 	# проносяться перед самим обличчям.
+	# Заграва в глибині — єдина барва в усьому світі.
 	_backdrops.append(Backdrop.new(0.06, Backdrop.Kind.HAZE,
-		Color(0.52, 0.17, 0.13, 0.30), 210.0, 0.0, 0.0, 0.0, 190.0))
-	_backdrops.append(Backdrop.new(0.18, Backdrop.Kind.BARS,
-		Color("17181b"), 0.0, 900.0, 210.0, 0.0))
-	_backdrops.append(Backdrop.new(0.38, Backdrop.Kind.BARS,
-		Color("1d1e22"), 0.0, 760.0, 260.0, 1.1))
-	_backdrops.append(Backdrop.new(0.60, Backdrop.Kind.BARS,
-		Color("242529"), 0.0, 620.0, 330.0, 2.4))
-	_backdrops.append(Backdrop.new(1.60, Backdrop.Kind.BARS,
-		Color("0b0c0e"), 0.0, 1400.0, 780.0, 0.6))
+		Color(0.55, 0.18, 0.14, 0.13), 300.0, 0.0, 0.0, 0.0, 300.0))
+
+	# Колонада, розібрана з одного намальованого кадру. Далекі шари менші й
+	# темніші; тінт накладається тут, бо в картинці вони сірі — чорне від
+	# чорного не відділити при вирізанні.
+	var mid_tex: Texture2D = load("res://art/nyts/pillars_mid.png") as Texture2D
+	var near_tex: Texture2D = load("res://art/nyts/pillars_near.png") as Texture2D
+	var front_tex: Texture2D = load("res://art/nyts/pillars_front.png") as Texture2D
+
+	if mid_tex != null:
+		_backdrops.append(Backdrop.textured(0.16, mid_tex, 0.30, Color(0.16, 0.16, 0.19)))
+		_backdrops.append(Backdrop.textured(0.36, mid_tex, 0.52, Color(0.30, 0.30, 0.33)))
+	if near_tex != null:
+		_backdrops.append(Backdrop.textured(0.62, near_tex, 0.78, Color(0.52, 0.52, 0.55)))
+	if front_tex != null:
+		_backdrops.append(Backdrop.textured(1.55, front_tex, 1.35, Color(0.05, 0.05, 0.06)))
 
 	# Ґрати: високі вузькі стовпи ПОЗАДУ гравця (відʼємна глибина, тому
 	# малюються першими). Не суцільні — у профілі їх нічим було б обійти,
@@ -795,6 +825,8 @@ func _draw_backdrops(foreground: bool) -> void:
 				)
 			Backdrop.Kind.BARS:
 				_draw_bars(view, shift, baseline, layer)
+			Backdrop.Kind.TEXTURE:
+				_draw_textured(view, shift, baseline, layer)
 			Backdrop.Kind.HAZE:
 				# Кілька вкладених смуг замість однієї: край розмивається,
 				# і заграва перестає читатися як намальована лінійкою.
@@ -824,6 +856,28 @@ func _hill_polygon(view: Rect2, shift: float, baseline: float, layer: Backdrop) 
 	points.append(Vector2(view.end.x, baseline + layer.lift))
 	points.append(Vector2(view.position.x, baseline + layer.lift))
 	return points
+
+
+## Текстура повторюється вздовж x і стоїть НА лінії підлоги.
+func _draw_textured(view: Rect2, shift: float, baseline: float, layer: Backdrop) -> void:
+	if layer.texture == null:
+		return
+	var width: float = float(layer.texture.get_width()) * layer.scale
+	var height: float = float(layer.texture.get_height()) * layer.scale
+	if width <= 1.0:
+		return
+
+	var index: int = int(floor((view.position.x - shift) / width)) - 1
+	while true:
+		var x: float = float(index) * width + shift
+		if x > view.end.x:
+			break
+		draw_texture_rect(
+			layer.texture,
+			Rect2(Vector2(x, baseline - height), Vector2(width, height)),
+			false, layer.color
+		)
+		index += 1
 
 
 func _draw_bars(view: Rect2, shift: float, baseline: float, layer: Backdrop) -> void:
@@ -866,6 +920,19 @@ func _draw_plate(plate: Rect2, flat: float, mapn: float) -> void:
 			Rect2(Vector2(rect.position.x, far_y - 26.0), Vector2(rect.size.x, 26.0)),
 			Color(_ground.darkened(0.35), 1.0 - mapn)
 		)
+
+	# У Ниці підлога намальована, а не залита кольором.
+	if _floor_texture != null and flat > 0.5:
+		var fh: float = float(_floor_texture.get_height()) * 0.9
+		var fw: float = float(_floor_texture.get_width()) * 0.9
+		var i: int = int(floor(view.position.x / fw)) - 1
+		while float(i) * fw <= view.end.x:
+			draw_texture_rect(
+				_floor_texture,
+				Rect2(Vector2(float(i) * fw, far_y), Vector2(fw, fh)),
+				false, Color(0.62, 0.62, 0.64)
+			)
+			i += 1
 
 	_draw_grid_on(plate, flat, mapn)
 
@@ -912,9 +979,12 @@ func _draw_prop(prop: Prop, flat: float, mapn: float) -> void:
 	var hd: float = prop.size.y * 0.5
 	var base: Vector3 = prop.pos
 
-	var side_col: Color = _ground.lightened(0.18 + prop.tint * 0.12).darkened(0.35)
-	var face_col: Color = _ground.lightened(0.30 + prop.tint * 0.18)
-	var top_col: Color = _ground.lightened(0.52 + prop.tint * 0.20)
+	# Що площинніший світ, то ближче пропси до силуету: у Ниці світлі коробки
+	# б'ються з мальованим тлом, бо там усе читається тінню.
+	var lift: float = 1.0 - flat * 0.72
+	var side_col: Color = _ground.lightened((0.18 + prop.tint * 0.12) * lift).darkened(0.35)
+	var face_col: Color = _ground.lightened((0.30 + prop.tint * 0.18) * lift)
+	var top_col: Color = _ground.lightened((0.52 + prop.tint * 0.20) * lift)
 
 	# У сірому боксі одразу видно, крізь що можна пройти.
 	var pass_through: float = 1.0 if prop.solid else 0.45
