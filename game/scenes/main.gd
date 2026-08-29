@@ -18,6 +18,9 @@ const PLAYER_HEIGHT: float = 118.0
 const PLAYER_HALF_WIDTH: float = 26.0
 
 ## Такти переходу після завершення морфу, у секундах.
+## Наскільки камера підіймається над гравцем у площинному світі.
+const CAMERA_LIFT_FLAT: float = 250.0
+
 const BEAT_LIE_STILL: float = 0.45
 const BEAT_VEIL_IN: float = 0.55
 const BEAT_VEIL_OUT: float = 0.75
@@ -319,24 +322,38 @@ func _build_nyts() -> Vector3:
 	# горизонтально, і саме для цього випадку паралакс і вигадали.
 	# Пʼять шарів: від ледь видимого відблиску в глибині до ґрат, що
 	# проносяться перед самим обличчям.
-	# Заграва в глибині — єдина барва в усьому світі.
-	_backdrops.append(Backdrop.new(0.06, Backdrop.Kind.HAZE,
-		Color(0.55, 0.18, 0.14, 0.13), 300.0, 0.0, 0.0, 0.0, 300.0))
+	# Заграва — єдина барва в усьому світі. Текстурою, а не смугою: смуга
+	# читалася як намальована лінійкою й різала кадр навпіл.
+	var glow_tex: Texture2D = load("res://art/nyts/glow.png") as Texture2D
+	if glow_tex != null:
+		_backdrops.append(Backdrop.textured(
+			0.05, glow_tex, 0.55, Color(0.62, 0.24, 0.19, 0.55), 190.0
+		))
 
-	# Колонада, розібрана з одного намальованого кадру. Далекі шари менші й
-	# темніші; тінт накладається тут, бо в картинці вони сірі — чорне від
-	# чорного не відділити при вирізанні.
-	var mid_tex: Texture2D = load("res://art/nyts/pillars_mid.png") as Texture2D
+	# Колонада. Одна й та сама розріджена картинка працює двома шарами: далекий
+	# менший, вищий над підлогою й темніший. Підйом над лінією підлоги — це
+	# підроблений горизонт: у площинному світі глибини немає, і без нього всі
+	# стовпи стояли б на одній лінії, наче в один ряд.
+	var row_tex: Texture2D = load("res://art/nyts/pillars_row.png") as Texture2D
 	var near_tex: Texture2D = load("res://art/nyts/pillars_near.png") as Texture2D
 	var front_tex: Texture2D = load("res://art/nyts/pillars_front.png") as Texture2D
 
-	if mid_tex != null:
-		_backdrops.append(Backdrop.textured(0.16, mid_tex, 0.30, Color(0.16, 0.16, 0.19)))
-		_backdrops.append(Backdrop.textured(0.36, mid_tex, 0.52, Color(0.30, 0.30, 0.33)))
+	if row_tex != null:
+		_backdrops.append(Backdrop.textured(
+			0.14, row_tex, 0.42, Color(0.21, 0.21, 0.25), 165.0
+		))
+		_backdrops.append(Backdrop.textured(
+			0.34, row_tex, 0.70, Color(0.46, 0.46, 0.50), 72.0
+		))
 	if near_tex != null:
-		_backdrops.append(Backdrop.textured(0.62, near_tex, 0.78, Color(0.52, 0.52, 0.55)))
+		_backdrops.append(Backdrop.textured(
+			0.60, near_tex, 0.55, Color(0.72, 0.72, 0.76), 0.0
+		))
 	if front_tex != null:
-		_backdrops.append(Backdrop.textured(1.55, front_tex, 1.35, Color(0.05, 0.05, 0.06)))
+		# Передній план заходить нижче підлоги — він же перед нею.
+		_backdrops.append(Backdrop.textured(
+			1.50, front_tex, 2.10, Color(0.10, 0.10, 0.12), -140.0
+		))
 
 	# Ґрати: високі вузькі стовпи ПОЗАДУ гравця (відʼємна глибина, тому
 	# малюються першими). Не суцільні — у профілі їх нічим було б обійти,
@@ -560,8 +577,13 @@ func _physics_process(delta: float) -> void:
 
 	_update_combat(delta)
 
-	_camera.position = Projector.project(_mover.position) \
-		+ Vector2(0.0, -PLAYER_HEIGHT * 0.5 * Projector.height_scale)
+	# У профілі камера піднімається: підлога має лежати в нижній чверті кадру,
+	# а не посередині. Інакше під ногами зяє півекрана порожнечі, а стовпи
+	# зрізає верхнім краєм на середині зросту.
+	var lift: float = lerpf(
+		PLAYER_HEIGHT * 0.5, CAMERA_LIFT_FLAT, Projector.flatness()
+	)
+	_camera.position = Projector.project(_mover.position) - Vector2(0.0, lift)
 	queue_redraw()
 	_update_hud()
 
@@ -921,6 +943,14 @@ func _draw_plate(plate: Rect2, flat: float, mapn: float) -> void:
 			Color(_ground.darkened(0.35), 1.0 - mapn)
 		)
 
+	# Під підлогою — не діра, а темна порода. Порожній чорний низ екрана
+	# читався як недомальована сцена.
+	if flat > 0.5:
+		draw_rect(
+			Rect2(Vector2(view.position.x, far_y), Vector2(view.size.x, view.end.y - far_y)),
+			Color(0.055, 0.05, 0.055)
+		)
+
 	# У Ниці підлога намальована, а не залита кольором.
 	if _floor_texture != null and flat > 0.5:
 		var fh: float = float(_floor_texture.get_height()) * 0.9
@@ -930,7 +960,7 @@ func _draw_plate(plate: Rect2, flat: float, mapn: float) -> void:
 			draw_texture_rect(
 				_floor_texture,
 				Rect2(Vector2(float(i) * fw, far_y), Vector2(fw, fh)),
-				false, Color(0.62, 0.62, 0.64)
+				false, Color(0.58, 0.58, 0.62)
 			)
 			i += 1
 
@@ -940,8 +970,8 @@ func _draw_plate(plate: Rect2, flat: float, mapn: float) -> void:
 	if mapn > 0.02:
 		draw_rect(rect, Color(_accent, mapn * 0.75), false, 4.0)
 
-	# Лінія підлоги для профілю.
-	if flat > 0.02:
+	# Лінію підлоги малюємо тільки поки підлоги немає намальованої.
+	if flat > 0.02 and _floor_texture == null:
 		draw_line(
 			Vector2(rect.position.x, far_y), Vector2(rect.end.x, far_y),
 			Color(_accent, flat * 0.8), 3.0
@@ -981,10 +1011,15 @@ func _draw_prop(prop: Prop, flat: float, mapn: float) -> void:
 
 	# Що площинніший світ, то ближче пропси до силуету: у Ниці світлі коробки
 	# б'ються з мальованим тлом, бо там усе читається тінню.
-	var lift: float = 1.0 - flat * 0.72
-	var side_col: Color = _ground.lightened((0.18 + prop.tint * 0.12) * lift).darkened(0.35)
-	var face_col: Color = _ground.lightened((0.30 + prop.tint * 0.18) * lift)
-	var top_col: Color = _ground.lightened((0.52 + prop.tint * 0.20) * lift)
+	# Силует задано явним кольором, а не ланцюжком lightened() від палітри:
+	# так результат не залежить від того, що саме зараз у палітрі.
+	const SILHOUETTE := Color(0.11, 0.11, 0.13)
+	var side_col: Color = _ground.lightened(0.18 + prop.tint * 0.12).darkened(0.35)
+	var face_col: Color = _ground.lightened(0.30 + prop.tint * 0.18)
+	var top_col: Color = _ground.lightened(0.52 + prop.tint * 0.20)
+	side_col = side_col.lerp(SILHOUETTE.darkened(0.3), flat)
+	face_col = face_col.lerp(SILHOUETTE, flat)
+	top_col = top_col.lerp(SILHOUETTE.lightened(0.06), flat)
 
 	# У сірому боксі одразу видно, крізь що можна пройти.
 	var pass_through: float = 1.0 if prop.solid else 0.45
@@ -1020,6 +1055,16 @@ func _draw_prop(prop: Prop, flat: float, mapn: float) -> void:
 	if mapn < 0.99:
 		draw_colored_polygon(front, Color(face_col, (1.0 - mapn) * pass_through))
 
+	# У силуетному світі пропси темні — але на що можна стати, гравець мусить
+	# бачити. Тонка світла грань згори лишає їх читабельними, не роблячи
+	# світлими коробками.
+	if flat > 0.5 and prop.solid:
+		var edge: Vector2 = Projector.project(base + Vector3(-hw, hd, prop.height))
+		draw_line(
+			edge, Projector.project(base + Vector3(hw, hd, prop.height)),
+			Color(_ground.lightened(0.55), flat * 0.55), 2.0
+		)
+
 	if mapn > 0.02:
 		var outline: PackedVector2Array = top.duplicate()
 		outline.append(top[0])
@@ -1029,7 +1074,8 @@ func _draw_prop(prop: Prop, flat: float, mapn: float) -> void:
 
 
 func _draw_wanderer(w: Wanderer, flat: float, mapn: float) -> void:
-	var col: Color = _ground.lightened(0.62)
+	# Той самий закон, що й для пропсів: у площинному світі все читається тінню.
+	var col: Color = _ground.lightened(0.62).lerp(Color(0.16, 0.16, 0.18), flat)
 	var feet: Vector2 = Projector.project(w.pos)
 	var head: Vector2 = Projector.project(w.pos + Vector3(0.0, 0.0, 78.0))
 
