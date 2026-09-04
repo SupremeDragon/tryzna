@@ -163,10 +163,35 @@ class Enemy extends RefCounted:
 		return Vector2(pos.x, pos.y)
 
 
+## Порошинка попелу. Найдешевше, що перетворює намальований кадр на місце:
+## поки нічого не рухається, око читає картину, а не простір.
+class Mote extends RefCounted:
+	var pos: Vector2 = Vector2.ZERO
+	var drift: Vector2 = Vector2.ZERO
+	var depth: float = 0.5   # 0 — далеко й дрібно, 1 — близько й помітно
+	var phase: float = 0.0
+	var size: float = 2.0
+
+	func _init(p_pos: Vector2, p_depth: float, p_phase: float) -> void:
+		pos = p_pos
+		depth = p_depth
+		phase = p_phase
+		size = lerpf(1.2, 3.4, p_depth)
+		# Попіл не падає рівно: він майже висить і ледь сповзає вбік.
+		drift = Vector2(lerpf(-6.0, 9.0, p_phase / TAU), lerpf(3.0, 11.0, p_depth))
+
+	func step(dt: float) -> void:
+		phase += dt * lerpf(0.5, 1.3, depth)
+		pos += drift * dt
+		pos.x += sin(phase) * 6.0 * dt
+
+
 @onready var _camera: Camera2D = $Camera2D
 @onready var _darkness: CanvasModulate = $Darkness
 @onready var _soul_light: PointLight2D = $SoulLight
+@onready var _vignette: TextureRect = $Screen/Vignette
 @onready var _hud: Label = $HUD/Readout
+@onready var _hud_detail: Label = $HUD/Detail
 @onready var _hint: Label = $HUD/Hint
 
 var _mover: MovementSolver.MoverState = MovementSolver.MoverState.new()
@@ -213,6 +238,15 @@ var _sky: Color = Color.BLACK
 var _ground: Color = Color.DIM_GRAY
 var _accent: Color = Color.WHITE
 
+## Пил у повітрі. Живе в екранних координатах, а не у світі: він скрізь,
+## і рахувати його як частину рівня немає сенсу.
+var _motes: Array[Mote] = []
+const MOTE_COUNT: int = 90
+const MOTE_FIELD := Vector2(2200.0, 1400.0)
+
+## Годинник світу. Потрібен усьому, що дихає: світлу, камері, пилу.
+var _world_time: float = 0.0
+
 var _veil: float = 0.0
 var _veil_color: Color = Color.BLACK
 
@@ -231,6 +265,29 @@ func _ready() -> void:
 
 	EventBus.world_fold_finished.connect(_on_fold_finished)
 	_refresh_hint()
+	_seed_motes()
+
+
+func _seed_motes() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 9051
+	_motes.clear()
+	for i: int in MOTE_COUNT:
+		_motes.append(Mote.new(
+			Vector2(rng.randf() * MOTE_FIELD.x, rng.randf() * MOTE_FIELD.y),
+			rng.randf(), rng.randf() * TAU
+		))
+
+
+## Порошинки живуть у прямокутнику навколо камери й загортаються по краях,
+## тож їх завжди рівно стільки, скільки треба, і жодної далеко за кадром.
+func _step_motes(dt: float) -> void:
+	var origin: Vector2 = _camera.position - MOTE_FIELD * 0.5
+	for mote: Mote in _motes:
+		mote.step(dt)
+		var local: Vector2 = mote.pos - origin
+		mote.pos.x = origin.x + fposmod(local.x, MOTE_FIELD.x)
+		mote.pos.y = origin.y + fposmod(local.y, MOTE_FIELD.y)
 
 
 # --- Три світи ---------------------------------------------------------------
@@ -485,6 +542,9 @@ func _build_vys() -> Vector3:
 func _unhandled_input(event: InputEvent) -> void:
 	if not event.is_pressed() or event.is_echo():
 		return
+	if event is InputEventKey and (event as InputEventKey).physical_keycode == KEY_F1:
+		_hud_detail.visible = not _hud_detail.visible
+		return
 	if event.is_action("quit_game"):
 		get_tree().quit()
 	elif event.is_action("debug_die"):
@@ -584,6 +644,7 @@ func _refresh_hint() -> void:
 # --- Симуляція ---------------------------------------------------------------
 
 func _physics_process(delta: float) -> void:
+	_world_time += delta
 	var input := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	# Пробіл робить те, що має сенс у цьому світі: у Ниці стрибок (єдиний світ,
 	# де є висота під ногами), деінде — ухилення.
@@ -618,8 +679,14 @@ func _physics_process(delta: float) -> void:
 	var lift: float = lerpf(
 		PLAYER_HEIGHT * 0.5, CAMERA_LIFT_FLAT, Projector.flatness()
 	)
-	_camera.position = Projector.project(_mover.position) - Vector2(0.0, lift)
+	# Ледь помітне гойдання камери. Ідеально нерухомий кадр читається як
+	# знімок; жива камера ніколи не стоїть на місці абсолютно.
+	var sway := Vector2(
+		sin(_world_time * 0.37) * 4.0, sin(_world_time * 0.29 + 1.3) * 3.0
+	)
+	_camera.position = Projector.project(_mover.position) - Vector2(0.0, lift) + sway
 	_update_soul_light()
+	_step_motes(delta)
 	queue_redraw()
 	_update_hud()
 
@@ -743,8 +810,18 @@ func _move_enemy(enemy: Enemy, delta: Vector2) -> void:
 func _update_soul_light() -> void:
 	var flat: float = Projector.flatness()
 
+	# Душа дихає. Не миготить, як вогонь, — повільно набирає й опадає.
+	# Рівне немиготливе світло читається шейдером, а не живою істотою.
+	var breath: float = 1.0 + sin(_world_time * 1.15) * 0.07 \
+		+ sin(_world_time * 2.7 + 0.8) * 0.03
+
+	# Віньєтка живе в екранному шарі, а не у світі: у світових координатах
+	# вона з'їжджає разом із камерою й лягає видимим коробом. Тут вона просто
+	# темнішає разом зі сплющенням світу.
+	_vignette.modulate.a = flat * 0.85
+
 	_darkness.color = Color.WHITE.lerp(DARKNESS_FLAT, flat)
-	_soul_light.energy = SOUL_LIGHT_ENERGY * flat
+	_soul_light.energy = SOUL_LIGHT_ENERGY * flat * breath
 	_soul_light.color = SOUL_LIGHT_TINT
 	_soul_light.visible = flat > 0.02
 
@@ -757,30 +834,37 @@ func _clamp_to_world() -> void:
 	_mover.position.y = clampf(_mover.position.y, _walk_bounds.position.y, _walk_bounds.end.y)
 
 
+## Відладковий рядок. Свідомо один рядок і дрібним: він зʼїдав пʼяту частину
+## екрана, а це прототип, а не інтерфейс гри. Подробиці — на F1.
 func _update_hud() -> void:
-	var state: String = "перехід…" if WorldMode.is_folding else "стабільно"
-	var clock: String = "час тече" if WorldMode.time_flowing else "ЧАС СТОЇТЬ"
-	var hearts: String = "".lpad(0)
+	var hearts: String = ""
 	for i: int in _hero.max_hp:
 		hearts += "♥" if i < _hero.hp else "·"
 
-	var alive_enemies: int = 0
+	var alive: int = 0
 	for enemy: Enemy in _enemies:
 		if enemy.body.is_alive():
-			alive_enemies += 1
+			alive += 1
 
-	_hud.text = "%s\nглибина: %.2f (силует %.0f%%)   ·   висота: %.2f (карта %.0f%%)\nрух: %s   ·   %s   ·   %s\nжиття: %s   ·   ворогів: %d   ·   відштовх: %s\nперешкод: %d   ·   шарів фону: %d   ·   Реєстр діянь: %d" % [
-		WorldMode.label(),
-		Projector.depth_scale, Projector.flatness() * 100.0,
-		Projector.height_scale, Projector.mapness() * 100.0,
-		WorldMode.solver().label(), state, clock,
-		hearts, alive_enemies,
-		"готовий" if _ability_cd <= 0.0 else "%.1f с" % _ability_cd,
-		_solid_world.count(), _backdrops.size(), Ledger.count(),
+	_hud.text = "%s   %s   ворог %d   відштовх %s   %s      F1 — подробиці" % [
+		WorldMode.label().get_slice(" ", 0), hearts, alive,
+		"+" if _ability_cd <= 0.0 else "%.0f" % _ability_cd,
+		"час іде" if WorldMode.time_flowing else "час стоїть",
 	]
 
+	if not _hud_detail.visible:
+		return
 
-# --- Малювання ---------------------------------------------------------------
+	_hud_detail.text = (
+		"глибина %.2f (силует %.0f%%)   висота %.2f (карта %.0f%%)\n"
+		+ "рух: %s   %s\nперешкод %d   шарів фону %d   порошинок %d   Реєстр %d"
+	) % [
+		Projector.depth_scale, Projector.flatness() * 100.0,
+		Projector.height_scale, Projector.mapness() * 100.0,
+		WorldMode.solver().label(),
+		"перехід…" if WorldMode.is_folding else "стабільно",
+		_solid_world.count(), _backdrops.size(), _motes.size(), Ledger.count(),
+	]
 
 func _draw() -> void:
 	var flat: float = Projector.flatness()
@@ -814,6 +898,7 @@ func _draw() -> void:
 
 	# Передній план малюється ПІСЛЯ всіх тіл — він же попереду.
 	_draw_backdrops(true)
+	_draw_motes(flat)
 
 	if _veil > 0.001:
 		draw_rect(_visible_rect(), Color(_veil_color, _veil))
@@ -876,6 +961,36 @@ func _draw_marker(
 
 
 ## `foreground`: false — усе, що позаду світу; true — те, що попереду нього.
+## Пил у повітрі. Дальні порошинки дрібніші, тьмяніші й повільніші —
+## це той самий паралакс, тільки на порошинках.
+func _draw_motes(flat: float) -> void:
+	if flat < 0.15:
+		return
+	var view: Rect2 = _visible_rect()
+	for mote: Mote in _motes:
+		if not view.has_point(mote.pos):
+			continue
+		var twinkle: float = 0.55 + sin(mote.phase * 1.7) * 0.45
+		draw_circle(
+			mote.pos, mote.size,
+			Color(0.72, 0.71, 0.70, flat * lerpf(0.06, 0.22, mote.depth) * twinkle)
+		)
+
+
+func _draw_vignette(flat: float) -> void:
+	if flat < 0.05:
+		return
+	var view: Rect2 = _visible_rect()
+	var bands: int = 7
+	for i: int in range(bands):
+		var k: float = float(i + 1) / float(bands)
+		var inset: Vector2 = view.size * 0.5 * (1.0 - k) * 0.85
+		draw_rect(
+			Rect2(view.position + inset, view.size - inset * 2.0),
+			Color(0.0, 0.0, 0.0, flat * 0.055), false, view.size.x * 0.04 * k
+		)
+
+
 func _draw_backdrops(foreground: bool) -> void:
 	if _backdrops.is_empty():
 		return
