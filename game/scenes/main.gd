@@ -27,9 +27,22 @@ const CAMERA_LIFT_FLAT: float = 250.0
 ## Прив'язано до сплющеності, а не до режиму світу: коли гравець помирає й
 ## світ втрачає глибину, темрява надходить РАЗОМ із цим. Окремого переходу
 ## не треба — смерть сама себе й затемнює.
-const DARKNESS_FLAT := Color(0.30, 0.30, 0.34)
-const SOUL_LIGHT_TINT := Color(0.88, 0.90, 0.96)
-const SOUL_LIGHT_ENERGY: float = 1.45
+## Темрява в Ниці лежить МІЖ предметами, а не на них.
+##
+## Спершу я затемнив усе до 0.30 — і разом із тінтами шарів (0.46) від
+## намальованої яскравості лишалося чотирнадцять відсотків. Вийшло багно.
+## Арт уже намальований темним; рушію лишається тільки трохи його притінити
+## й додати світло душі згори, а не гасити все й підсвічувати наново.
+## Скільки темряви лягає між сусідніми шарами заднього плану.
+## Саме вона розділяє ряди по глибині — без неї шари читаються наліпками.
+const LAYER_HAZE: float = 0.13
+
+## На скільки земля виступає за прохідну зону, щоб обрив було видно.
+const EDGE_OVERHANG: float = 150.0
+
+const DARKNESS_FLAT := Color(0.66, 0.66, 0.70)
+const SOUL_LIGHT_TINT := Color(0.92, 0.94, 1.0)
+const SOUL_LIGHT_ENERGY: float = 1.15
 
 const BEAT_LIE_STILL: float = 0.45
 const BEAT_VEIL_IN: float = 0.55
@@ -363,19 +376,19 @@ func _build_nyts() -> Vector3:
 
 	if row_tex != null:
 		_backdrops.append(Backdrop.textured(
-			0.14, row_tex, 0.42, Color(0.21, 0.21, 0.25), 165.0, 26.0, 0.0
+			0.14, row_tex, 0.42, Color(0.40, 0.40, 0.45), 165.0, 26.0, 0.0
 		))
 		_backdrops.append(Backdrop.textured(
-			0.34, row_tex, 0.70, Color(0.46, 0.46, 0.50), 72.0, 34.0, 2.1
+			0.34, row_tex, 0.70, Color(0.68, 0.68, 0.73), 72.0, 34.0, 2.1
 		))
 	if near_tex != null:
 		_backdrops.append(Backdrop.textured(
-			0.60, near_tex, 0.55, Color(0.72, 0.72, 0.76), 0.0, 18.0, 4.4
+			0.60, near_tex, 0.55, Color(0.96, 0.96, 1.0), 0.0, 18.0, 4.4
 		))
 	if front_tex != null:
 		# Передній план заходить нижче підлоги — він же перед нею.
 		_backdrops.append(Backdrop.textured(
-			1.50, front_tex, 2.10, Color(0.10, 0.10, 0.12), -140.0
+			1.50, front_tex, 2.10, Color(0.16, 0.16, 0.19), -140.0
 		))
 
 	# Ґрат-декорацій тут більше немає: їхню роботу перебрали намальовані
@@ -861,9 +874,20 @@ func _draw_backdrops(foreground: bool) -> void:
 	var view: Rect2 = _visible_rect()
 	var horizon: float = Projector.project(Vector3(0.0, _bounds.position.y, 0.0)).y
 
+	# Між шарами кладемо серпанок. Без нього кожен шар обривається різко й
+	# читається наліпкою: видно платформу, за нею одразу другу, а стовпи то
+	# втоплені в чорноту, то стирчать поверх неї. У референсі кожен ряд
+	# углиб темніший за попередній — це і є атмосфера, тільки намальована.
+	var drawn: int = 0
+
 	for layer: Backdrop in _backdrops:
 		if (layer.parallax > 1.0) != foreground:
 			continue
+
+		# Серпанок лягає ПЕРЕД шаром, тож усе, що позаду, вже під ним.
+		if not foreground and drawn > 0:
+			draw_rect(view, Color(_sky, LAYER_HAZE))
+		drawn += 1
 		# Ось і весь паралакс: шар зміщується назустріч камері тим сильніше,
 		# чим він далі. На екрані це читається як рух із різною швидкістю.
 		var shift: float = _camera.position.x * (1.0 - layer.parallax)
@@ -980,9 +1004,18 @@ func _draw_plate(plate: Rect2, flat: float, mapn: float) -> void:
 	# Коли глибина схлопується, плита вироджується в лінію — і земля мусить
 	# долити екран донизу, інакше під підлогою сайд-скрола зяяло б небо.
 	var bottom: float = lerpf(near_y, view.end.y, flat)
+
+	# Земля закінчується там, де закінчується прохідна зона (плюс невеликий
+	# виступ). Інакше гравець упирається в невидиму стіну посеред підлоги,
+	# яка тягнеться далі — найгірше відчуття, яке може дати межа рівня.
+	# Тепер підлога просто обривається, а за нею немає нічого.
+	var left: float = maxf(plate.position.x, _walk_bounds.position.x - EDGE_OVERHANG)
+	var right: float = minf(plate.end.x, _walk_bounds.end.x + EDGE_OVERHANG)
+	if right - left < 4.0:
+		return
+
 	var rect := Rect2(
-		Vector2(plate.position.x, far_y),
-		Vector2(plate.size.x, maxf(bottom - far_y, 2.0))
+		Vector2(left, far_y), Vector2(right - left, maxf(bottom - far_y, 2.0))
 	)
 	draw_rect(rect, _ground)
 
@@ -998,7 +1031,7 @@ func _draw_plate(plate: Rect2, flat: float, mapn: float) -> void:
 	if flat > 0.5:
 		draw_rect(
 			Rect2(Vector2(view.position.x, far_y), Vector2(view.size.x, view.end.y - far_y)),
-			Color(0.055, 0.05, 0.055)
+			Color(0.085, 0.08, 0.088)
 		)
 
 	# У Ниці підлога намальована, а не залита кольором.
@@ -1010,9 +1043,19 @@ func _draw_plate(plate: Rect2, flat: float, mapn: float) -> void:
 			draw_texture_rect(
 				_floor_texture,
 				Rect2(Vector2(float(i) * fw, far_y), Vector2(fw, fh)),
-				false, Color(0.58, 0.58, 0.62)
+				false, Color(0.92, 0.92, 0.96)
 			)
 			i += 1
+
+	# Кромка обриву: земля темніє перед самим краєм, за нею порожнеча.
+	if flat > 0.5:
+		var fade: float = 110.0
+		for side: int in [0, 1]:
+			var fx: float = left if side == 0 else right - fade
+			draw_rect(
+				Rect2(Vector2(fx, far_y), Vector2(fade, view.end.y - far_y)),
+				Color(0.0, 0.0, 0.0, 0.6)
+			)
 
 	_draw_grid_on(plate, flat, mapn)
 
@@ -1112,7 +1155,7 @@ func _draw_prop(prop: Prop, flat: float, mapn: float) -> void:
 		draw_texture_rect(
 			_ledge_texture,
 			Rect2(Vector2(base.x - hw, top_y), Vector2(hw * 2.0, bottom_y - top_y)),
-			false, Color(0.62, 0.62, 0.66)
+			false, Color(0.88, 0.88, 0.92)
 		)
 	elif mapn < 0.99:
 		draw_colored_polygon(front, Color(face_col, (1.0 - mapn) * pass_through))
