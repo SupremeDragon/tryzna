@@ -59,6 +59,42 @@ def key_flat(
     return out, bg
 
 
+def fill_holes(rgba: Image.Image, edge: int = 40) -> Image.Image:
+    """Робить непрозорим усе, що ВСЕРЕДИНІ контуру предмета.
+
+    Головне виправлення для будівель. Вирізка за різницею кольору знімає все,
+    що схоже на тло, — а стіна зрубу сірувато-бура, і тло генерації теж сіре.
+    Через це середина стіни ставала напівпрозорою разом із тлом, і крізь хату
+    було видно паркан. Поріг тут не рятує: підняти означає з'їсти край,
+    опустити — лишити тло.
+
+    Тому тло визначається не кольором, а ЗВ'ЯЗНІСТЮ: справжнє тло дотикається
+    краю кадру, а дірка в стіні — ні. Заливаємо ззовні й лишаємо непрозорим
+    усе, куди залив не дістався.
+
+    УВАГА: для дерева це неприпустимо. Просвіти між гілками — теж «дірки», і
+    після заливки береза стає суцільною плямою. Тому окремий прапорець, а не
+    типова поведінка.
+    """
+    from PIL import ImageDraw
+
+    alpha = rgba.split()[3]
+    w, h = alpha.size
+
+    # Рамка в один піксель, щоб заливу було звідки початися навіть тоді,
+    # коли предмет торкається краю кадру.
+    outside = Image.new("L", (w + 2, h + 2), 0)
+    outside.paste(alpha.point(lambda v: 255 if v > edge else 0), (1, 1))
+    ImageDraw.floodfill(outside, (0, 0), 128)
+
+    solid = outside.crop((1, 1, w + 1, h + 1)).point(
+        lambda v: 0 if v == 128 else 255
+    )
+    out = rgba.copy()
+    out.putalpha(ImageChops.lighter(alpha, solid))
+    return out
+
+
 def trim(rgba: Image.Image, keep: int = 6) -> Image.Image:
     box = rgba.split()[3].point(lambda v: 255 if v > keep else 0).getbbox()
     return rgba.crop(box) if box else rgba
@@ -72,12 +108,18 @@ def main() -> None:
     ap.add_argument("--high", type=int, default=60, help="вище — предмет")
     ap.add_argument("--blur", type=float, default=0.5)
     ap.add_argument("--no-trim", action="store_true")
+    ap.add_argument(
+        "--fill-holes", action="store_true",
+        help="залити напівпрозорі дірки всередині контуру (будівлі, НЕ дерева)",
+    )
     args = ap.parse_args()
 
     src = args.src if os.path.isabs(args.src) else os.path.join(ROOT, args.src)
     dst = args.dst if os.path.isabs(args.dst) else os.path.join(ROOT, args.dst)
 
     out, bg = key_flat(Image.open(src), args.low, args.high, args.blur)
+    if args.fill_holes:
+        out = fill_holes(out)
     if not args.no_trim:
         out = trim(out)
 
