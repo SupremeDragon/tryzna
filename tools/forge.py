@@ -54,7 +54,11 @@ NEGATIVE = (
     "text, letters, watermark, signature, logo, UI elements, modern objects, "
     # Люди пролазять навіть у порожні печери — модель любить ставити фігурку
     # «для масштабу». Нам вона зайва: у кадрі має бути тільки гравець.
-    "person, people, human figure, silhouette of a man, character, creature, "
+    # УВАГА: тут НЕ МОЖНА писати «silhouette of a man». SD важить кожне слово
+    # окремо, і слово «silhouette» глушило силуети взагалі — а саме силует нам
+    # і потрібен від кожного шару фону. Через це замість гребеня пагорбів
+    # виходив туман. Людей проганяємо словами, які значать тільки людей.
+    "person, people, human figure, man, woman, character, creature, "
     # DreamShaper любить лишати незафарбований папір по краях і виходить
     # «мазок на аркуші», а не кадр. Міша це вже забракував, тож глушимо.
     "white border, paper texture, sketchbook page, unpainted margin, "
@@ -153,19 +157,28 @@ JOBS: dict[str, dict] = {
     },
     # ПЛИНЬ. Світ смертних, і саме в ньому відбувається весь Акт I — а фон
     # там досі процедурні смуги. Найдальший шар: пагорби Тихої Балки.
+    # Пагорби Плині. Перша спроба дала шість туманних лугів без жодного
+    # силуету: слова про серпанок зʼїли форму. Для паралаксу потрібне
+    # протилежне — ЧІТКИЙ ГРЕБІНЬ на світлому небі, який ріжеться в
+    # прозорість і кладеться шарами, як колони в Ниці.
     "plyn-hills": {
         "subject": (
-            "distant rolling hills on the horizon, soft wooded slopes far away, "
-            "layered ridges fading into haze, damp overcast autumn, "
-            "no buildings, no people, empty land, "
-            "wide horizontal composition, image fills the entire frame"
+            "a distant range of low rounded hills along the bottom edge of the image, "
+            "dark grey-green hill shapes against the sky, one clean horizon line, "
+            "the entire upper two thirds is empty flat pale overcast sky, "
+            "nothing in the sky, seen from very far away, damp autumn, "
+            "wide horizontal composition"
         ),
         "world": "plyn",
         "light": "backdrop",
         "size": (1024, 384),
-        "cfg": 6.0,
+        "cfg": 6.5,
         "steps": 30,
-        "extra_negative": "mountains, snow, sunset, dramatic clouds, road, fence",
+        "extra_negative": (
+            "forest, trees close up, tree trunks, branches, leaves, "
+            "mountains, snow, sunset, dramatic clouds, road, fence, buildings, "
+            "foreground grass, field in front, water, reflection, birds"
+        ),
     },
     # Ближчий шар Плині: смуга лісу. Ріжеться в прозорість, тому тло рівне.
     "plyn-trees": {

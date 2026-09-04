@@ -379,19 +379,38 @@ func _build_plyn() -> Vector3:
 		))
 
 	# ПЛИНЬ — паралакс помірний. У трьох чвертях камера ходить в обидва боки,
-	# і далина здебільшого лежить углиб, а не вбік. Три смуги позаду й одна
-	# попереду — цього досить, більше вже не читається.
-	_backdrops.append(Backdrop.new(0.12, Backdrop.Kind.HILLS,
-		Color("39463c"), 250.0, 190.0, 1500.0, 0.0))
-	_backdrops.append(Backdrop.new(0.28, Backdrop.Kind.HILLS,
-		Color("36443b"), 150.0, 140.0, 900.0, 1.7))
-	_backdrops.append(Backdrop.new(0.45, Backdrop.Kind.HILLS,
-		Color("33403a"), 60.0, 100.0, 640.0, 3.3))
+	# і далина здебільшого лежить углиб, а не вбік.
+	# Шари нарізані з ОДНОГО затвердженого кадру Тихої Балки
+	# (tools/cut_band.py). Це метод Міші й він правильніший за генерацію шарів
+	# нарізно: у готовому кадрі вже є і композиція, і палітра, і повітряна
+	# перспектива — далекі гребені сині й бліді не тому, що я так вирішив,
+	# а тому, що художник так намалював. Шість окремих генерацій цього не дають.
+	var far_hills: Texture2D = load("res://art/plyn/hills_far.png") as Texture2D
+	var mid_hills: Texture2D = load("res://art/plyn/hills_mid.png") as Texture2D
+	var treeline: Texture2D = load("res://art/plyn/treeline.png") as Texture2D
+	var grass: Texture2D = load("res://art/plyn/grass_front.png") as Texture2D
+
+	if far_hills != null:
+		_backdrops.append(Backdrop.textured(
+			0.12, far_hills, 1.05, Color(0.96, 0.97, 1.0), 330.0, 0.0, 0.0
+		))
+	if mid_hills != null:
+		_backdrops.append(Backdrop.textured(
+			0.28, mid_hills, 0.82, Color(0.97, 0.98, 1.0), 170.0, 14.0, 1.7
+		))
+	if treeline != null:
+		_backdrops.append(Backdrop.textured(
+			0.45, treeline, 0.70, Color(1.0, 1.0, 1.0), 70.0, 18.0, 3.3
+		))
+	# Серпанок між лінією дерев і селом. Він тут не для краси: без нього
+	# намальована далина сідає впритул до гравця.
 	_backdrops.append(Backdrop.new(0.62, Backdrop.Kind.HAZE,
-		Color(0.75, 0.79, 0.76, 0.20), 30.0, 0.0, 0.0, 0.0, 120.0))
+		Color(0.82, 0.85, 0.83, 0.22), 30.0, 0.0, 0.0, 0.0, 130.0))
 	# Передній план: летить швидше за гравця. Найдешевший спосіб додати обʼєм.
-	_backdrops.append(Backdrop.new(1.45, Backdrop.Kind.HAZE,
-		Color(0.10, 0.13, 0.11, 0.26), -620.0, 0.0, 0.0, 0.0, 220.0))
+	if grass != null:
+		_backdrops.append(Backdrop.textured(
+			1.45, grass, 1.15, Color(0.72, 0.74, 0.70, 0.88), -1040.0
+		))
 
 	# Культ Сліз прийшов у Балку. Бій живе в Плині: у Ниці його майже немає,
 	# а у Висі немає взагалі — див. docs/03-геймплей.md.
