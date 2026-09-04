@@ -92,15 +92,21 @@ class Backdrop extends RefCounted:
 	## зробити його невирізуваним, бо чорне від чорного не відділити.
 	var texture: Texture2D = null
 	var scale: float = 1.0
+	## Наскільки тайли гуляють по вертикалі, щоб ряд не був лінійкою.
+	var tile_jitter: float = 0.0
 
 	## Шар із текстури. Темрява накладається тінтом, а не запікається в картинку.
 	static func textured(
 		p_parallax: float, p_texture: Texture2D, p_scale: float,
-		p_tint: Color, p_lift: float = 0.0
+		p_tint: Color, p_lift: float = 0.0, p_jitter: float = 0.0,
+		p_phase: float = 0.0
 	) -> Backdrop:
-		var layer := Backdrop.new(p_parallax, Kind.TEXTURE, p_tint, p_lift, 0.0, 0.0, 0.0)
+		var layer := Backdrop.new(
+			p_parallax, Kind.TEXTURE, p_tint, p_lift, 0.0, 0.0, p_phase
+		)
 		layer.texture = p_texture
 		layer.scale = p_scale
+		layer.tile_jitter = p_jitter
 		return layer
 
 	func _init(
@@ -340,14 +346,14 @@ func _build_nyts() -> Vector3:
 
 	if row_tex != null:
 		_backdrops.append(Backdrop.textured(
-			0.14, row_tex, 0.42, Color(0.21, 0.21, 0.25), 165.0
+			0.14, row_tex, 0.42, Color(0.21, 0.21, 0.25), 165.0, 26.0, 0.0
 		))
 		_backdrops.append(Backdrop.textured(
-			0.34, row_tex, 0.70, Color(0.46, 0.46, 0.50), 72.0
+			0.34, row_tex, 0.70, Color(0.46, 0.46, 0.50), 72.0, 34.0, 2.1
 		))
 	if near_tex != null:
 		_backdrops.append(Backdrop.textured(
-			0.60, near_tex, 0.55, Color(0.72, 0.72, 0.76), 0.0
+			0.60, near_tex, 0.55, Color(0.72, 0.72, 0.76), 0.0, 18.0, 4.4
 		))
 	if front_tex != null:
 		# Передній план заходить нижче підлоги — він же перед нею.
@@ -881,6 +887,17 @@ func _hill_polygon(view: Rect2, shift: float, baseline: float, layer: Backdrop) 
 
 
 ## Текстура повторюється вздовж x і стоїть НА лінії підлоги.
+##
+## Повторення видно оком: та сама картинка через кожні `width` пікселів
+## читається як шпалери. Лікуємо не новим артом (варіації, згенеровані
+## img2img, відрізнялися від оригіналу менш ніж на відсоток), а двома
+## безкоштовними прийомами:
+##
+##   1. КОЖЕН ДРУГИЙ тайл дзеркалиться — період стає вдвічі довшим;
+##   2. кожен тайл трохи зсувається по вертикалі — ряд перестає бути лінійкою.
+##
+## Зсув детермінований від номера тайла, тож картинка не смикається між
+## кадрами й не залежить від того, звідки прийшла камера.
 func _draw_textured(view: Rect2, shift: float, baseline: float, layer: Backdrop) -> void:
 	if layer.texture == null:
 		return
@@ -894,11 +911,21 @@ func _draw_textured(view: Rect2, shift: float, baseline: float, layer: Backdrop)
 		var x: float = float(index) * width + shift
 		if x > view.end.x:
 			break
-		draw_texture_rect(
-			layer.texture,
-			Rect2(Vector2(x, baseline - height), Vector2(width, height)),
-			false, layer.color
-		)
+
+		var jitter: float = sin(float(index) * 7.31 + layer.phase) * layer.tile_jitter
+		var y: float = baseline - height + jitter
+		var box := Rect2(Vector2.ZERO, Vector2(width, height))
+
+		if index % 2 == 0:
+			draw_texture_rect(
+				layer.texture, Rect2(Vector2(x, y), box.size), false, layer.color
+			)
+		else:
+			# Дзеркалимо через відʼємний масштаб: правий край тайла стає лівим.
+			draw_set_transform(Vector2(x + width, y), 0.0, Vector2(-1.0, 1.0))
+			draw_texture_rect(layer.texture, box, false, layer.color)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
 		index += 1
 
 
