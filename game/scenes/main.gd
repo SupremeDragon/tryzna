@@ -171,6 +171,10 @@ var _backdrops: Array[Backdrop] = []
 
 ## Намальована підлога. Є тільки там, де рівень справді площинний.
 var _floor_texture: Texture2D = null
+
+## Уступ — це шматок тієї самої кам'яної підлоги, піднятий над землею.
+## Тому окремої текстури не малюємо: беремо ту, що вже є.
+var _ledge_texture: Texture2D = null
 var _solid_world: SolidWorld = SolidWorld.new()
 
 ## Розвʼязувач, що перехоплює керування посеред складання камери.
@@ -243,6 +247,7 @@ func _load_world(mode: WorldMode.Mode) -> void:
 
 	_floor_texture = load("res://art/nyts/floor.png") as Texture2D \
 		if mode == WorldMode.Mode.NYTS else null
+	_ledge_texture = _floor_texture
 
 	_solid_world.clear()
 	for prop: Prop in _props:
@@ -373,18 +378,9 @@ func _build_nyts() -> Vector3:
 			1.50, front_tex, 2.10, Color(0.10, 0.10, 0.12), -140.0
 		))
 
-	# Ґрати: високі вузькі стовпи ПОЗАДУ гравця (відʼємна глибина, тому
-	# малюються першими). Не суцільні — у профілі їх нічим було б обійти,
-	# і коридор став би непрохідним. Це декорація клітки, а не перешкода.
-	for i: int in range(34):
-		var x: float = -3200.0 + float(i) * 190.0
-		_props.append(Prop.new(
-			Vector3(x + rng.randf_range(-30.0, 30.0), rng.randf_range(-90.0, -40.0), 0.0),
-			Vector2(rng.randf_range(26.0, 54.0), 40.0),
-			rng.randf_range(180.0, 620.0),
-			rng.randf() * 0.4,
-			false
-		))
+	# Ґрат-декорацій тут більше немає: їхню роботу перебрали намальовані
+	# шари колонади. Вони лишалися сірими прямокутниками серед мальованого
+	# світу й дублювали те, що вже є позаду.
 
 	# Уступи — суцільні. Висота стрибка ~184, тому все нижче можна взяти.
 	for k: int in range(11):
@@ -1106,7 +1102,19 @@ func _draw_prop(prop: Prop, flat: float, mapn: float) -> void:
 		draw_colored_polygon(side, Color(side_col, (1.0 - flat) * (1.0 - mapn) * pass_through))
 	if flat < 0.98:
 		draw_colored_polygon(top, Color(top_col, (1.0 - flat * 0.85) * pass_through))
-	if mapn < 0.99:
+
+	# У площинному світі передня грань — це весь пропс, і саме її видно.
+	# Тому там, де є намальований камінь, кладемо його замість заливки.
+	var textured: bool = flat > 0.5 and prop.solid and _ledge_texture != null
+	if textured:
+		var top_y: float = Projector.project(base + Vector3(0.0, 0.0, prop.height)).y
+		var bottom_y: float = Projector.project(base).y
+		draw_texture_rect(
+			_ledge_texture,
+			Rect2(Vector2(base.x - hw, top_y), Vector2(hw * 2.0, bottom_y - top_y)),
+			false, Color(0.62, 0.62, 0.66)
+		)
+	elif mapn < 0.99:
 		draw_colored_polygon(front, Color(face_col, (1.0 - mapn) * pass_through))
 
 	# У силуетному світі пропси темні — але на що можна стати, гравець мусить
