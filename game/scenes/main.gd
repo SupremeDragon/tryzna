@@ -21,6 +21,16 @@ const PLAYER_HALF_WIDTH: float = 26.0
 ## Наскільки камера підіймається над гравцем у площинному світі.
 const CAMERA_LIFT_FLAT: float = 250.0
 
+## Світло душі. У Ниці персонаж — єдине джерело світла, бо він і є душа:
+## світ мертвих не освітлений, освітлений той, хто крізь нього йде.
+##
+## Прив'язано до сплющеності, а не до режиму світу: коли гравець помирає й
+## світ втрачає глибину, темрява надходить РАЗОМ із цим. Окремого переходу
+## не треба — смерть сама себе й затемнює.
+const DARKNESS_FLAT := Color(0.30, 0.30, 0.34)
+const SOUL_LIGHT_TINT := Color(0.88, 0.90, 0.96)
+const SOUL_LIGHT_ENERGY: float = 1.45
+
 const BEAT_LIE_STILL: float = 0.45
 const BEAT_VEIL_IN: float = 0.55
 const BEAT_VEIL_OUT: float = 0.75
@@ -141,6 +151,8 @@ class Enemy extends RefCounted:
 
 
 @onready var _camera: Camera2D = $Camera2D
+@onready var _darkness: CanvasModulate = $Darkness
+@onready var _soul_light: PointLight2D = $SoulLight
 @onready var _hud: Label = $HUD/Readout
 @onready var _hint: Label = $HUD/Hint
 
@@ -590,6 +602,7 @@ func _physics_process(delta: float) -> void:
 		PLAYER_HEIGHT * 0.5, CAMERA_LIFT_FLAT, Projector.flatness()
 	)
 	_camera.position = Projector.project(_mover.position) - Vector2(0.0, lift)
+	_update_soul_light()
 	queue_redraw()
 	_update_hud()
 
@@ -706,6 +719,20 @@ func _move_enemy(enemy: Enemy, delta: Vector2) -> void:
 		enemy.pos.y = _solid_world.resolve_ground(_enemy_foot(enemy), 1, delta.y > 0.0)
 	enemy.pos.x = clampf(enemy.pos.x, _bounds.position.x, _bounds.end.x)
 	enemy.pos.y = clampf(enemy.pos.y, _bounds.position.y, _bounds.end.y)
+
+
+## Світло стоїть на рівні грудей, а не під ногами: інакше воно світить у
+## підлогу й персонаж лишається темною плямою на світлій калюжі.
+func _update_soul_light() -> void:
+	var flat: float = Projector.flatness()
+
+	_darkness.color = Color.WHITE.lerp(DARKNESS_FLAT, flat)
+	_soul_light.energy = SOUL_LIGHT_ENERGY * flat
+	_soul_light.color = SOUL_LIGHT_TINT
+	_soul_light.visible = flat > 0.02
+
+	var chest: Vector3 = _mover.position + Vector3(0.0, 0.0, PLAYER_HEIGHT * 0.55)
+	_soul_light.position = Projector.project(chest)
 
 
 func _clamp_to_world() -> void:
