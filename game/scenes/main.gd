@@ -977,20 +977,6 @@ func _draw_motes(flat: float) -> void:
 		)
 
 
-func _draw_vignette(flat: float) -> void:
-	if flat < 0.05:
-		return
-	var view: Rect2 = _visible_rect()
-	var bands: int = 7
-	for i: int in range(bands):
-		var k: float = float(i + 1) / float(bands)
-		var inset: Vector2 = view.size * 0.5 * (1.0 - k) * 0.85
-		draw_rect(
-			Rect2(view.position + inset, view.size - inset * 2.0),
-			Color(0.0, 0.0, 0.0, flat * 0.055), false, view.size.x * 0.04 * k
-		)
-
-
 func _draw_backdrops(foreground: bool) -> void:
 	if _backdrops.is_empty():
 		return
