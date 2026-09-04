@@ -1151,7 +1151,12 @@ func _draw_prop_sprite(prop: Prop, fade: float) -> void:
 	var tw: float = float(prop.texture.get_width()) * k
 	var th: float = float(prop.texture.get_height()) * k
 
-	_draw_ground_shadow(foot, tw * 0.34, (1.0 - fade) * prop.shadow)
+	# Тінь вужча за спрайт і трохи вище за його низ: у спрайті внизу є ще
+	# ґанок і трава, а тінь мусить лежати під СТІНАМИ. Широка тінь відривається
+	# від будівлі й починає читатися як окрема темна пляма на траві.
+	_draw_ground_shadow(
+		foot - Vector2(0.0, th * 0.05), tw * 0.24, (1.0 - fade) * prop.shadow
+	)
 
 	# Клапоть ґрунту знизу вирізки — це і є дотик до землі, тому низ
 	# спрайта опускається трохи нижче за точку основи.
@@ -1176,7 +1181,7 @@ func _draw_ground_shadow(foot: Vector2, radius: float, strength: float) -> void:
 	for i: int in range(4):
 		var k: float = 1.0 - float(i) * 0.21
 		draw_circle(
-			Vector2.ZERO, radius * k, Color(0.05, 0.06, 0.05, 0.10 * strength)
+			Vector2.ZERO, radius * k, Color(0.05, 0.06, 0.05, 0.075 * strength)
 		)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 func _sprite_prop(

@@ -107,6 +107,42 @@ def fill_holes(rgba: Image.Image, edge: int = 40) -> Image.Image:
     return out
 
 
+def oval_cut(rgba: Image.Image, power: float = 3.2, fade: float = 0.16):
+    """Гасить прозорість до нуля в кутах кадру.
+
+    Найчастіша й найгірша вада згенерованого пропса: модель домальовує під
+    предметом клапоть землі, і той клапоть доходить до краю кадру. Вирізка за
+    кольором лишає його як частину предмета — і в грі кожна хата стоїть у
+    видимому прямокутнику, а напівпрозорі краї того прямокутника читаються як
+    прозора стіна. Саме про це Міша сказав двічі.
+
+    Порогом не лікується: клапоть справді не тло, він намальований. Лікується
+    формою — предмет вписується в округлий прямокутник, а кути кадру
+    вирізаються. Показник степеня 3.2 дає не еліпс, а саме округлений
+    прямокутник: еліпс зрізав би кути даху.
+    """
+    w, h = rgba.size
+    mask = Image.new("L", (w, h))
+    px = mask.load()
+    cx, cy = (w - 1) / 2.0, (h - 1) / 2.0
+    inner = 1.0 - fade
+    for y in range(h):
+        ny = abs(y - cy) / cy if cy > 0 else 0.0
+        for x in range(w):
+            nx = abs(x - cx) / cx if cx > 0 else 0.0
+            r = (nx ** power + ny ** power) ** (1.0 / power)
+            if r <= inner:
+                px[x, y] = 255
+            elif r >= 1.0:
+                px[x, y] = 0
+            else:
+                px[x, y] = int((1.0 - (r - inner) / fade) * 255)
+
+    out = rgba.copy()
+    out.putalpha(ImageChops.multiply(rgba.split()[3], mask))
+    return out
+
+
 def trim(rgba: Image.Image, keep: int = 6) -> Image.Image:
     box = rgba.split()[3].point(lambda v: 255 if v > keep else 0).getbbox()
     return rgba.crop(box) if box else rgba
@@ -121,6 +157,10 @@ def main() -> None:
     ap.add_argument("--blur", type=float, default=0.5)
     ap.add_argument("--no-trim", action="store_true")
     ap.add_argument(
+        "--no-oval", action="store_true",
+        help="не зрізати кути кадру (тільки для того, що справді прямокутне)",
+    )
+    ap.add_argument(
         "--fill-holes", action="store_true",
         help="залити напівпрозорі дірки всередині контуру (будівлі, НЕ дерева)",
     )
@@ -132,6 +172,8 @@ def main() -> None:
     out, bg = key_flat(Image.open(src), args.low, args.high, args.blur)
     if args.fill_holes:
         out = fill_holes(out)
+    if not args.no_oval:
+        out = oval_cut(out)
     if not args.no_trim:
         out = trim(out)
 
