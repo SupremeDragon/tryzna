@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://k8v1jfst1ojq"
-path="res://.godot/imported/hata_c.png-f64c37f117c6317303782cd694c69dfd.ctex"
+uid="uid://ck8ynjtx12vgl"
+path="res://.godot/imported/dirt_a.png-c413058e0da6c2adb3fd112dfd4f755b.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/plyn/hata_c.png"
-dest_files=["res://.godot/imported/hata_c.png-f64c37f117c6317303782cd694c69dfd.ctex"]
+source_file="res://art/plyn/dirt_a.png"
+dest_files=["res://.godot/imported/dirt_a.png-c413058e0da6c2adb3fd112dfd4f755b.ctex"]
 
 [params]
 

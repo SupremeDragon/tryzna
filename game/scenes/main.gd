@@ -234,6 +234,33 @@ var _yards: Array[Rect2] = []
 ## яку видно, і головний засіб проти суцільної зелені.
 var _dirt: Array[Vector3] = []
 var _dirt_texture: Texture2D = null
+
+## --- КАРТА КЛІТИНКАМИ --------------------------------------------------------
+##
+## Земля Плині більше не одна картинка на весь світ, а СІТКА. Різниця не
+## косметична: поки земля була суцільною, стежку доводилося малювати поверх неї
+## окремими смугами, і вона ніяк не була пов'язана з тим, де що стоїть. Тепер
+## клітинка знає, що на ній, і знає своїх сусідів — а отже стежка сама
+## з'єднується зі стежкою й сама заокруглюється там, де закінчується.
+##
+## Клітинка квадратна у СВІТІ, а на екрані сплющена глибиною — так само, як усе
+## інше в Плині. Тому сітка не читається як шахівниця: вона лежить.
+## Дрібніша сітка коштує більше малювань, але стежка з клітинок 220 читалася
+## сходинками: заокруглення в атласі не рятує, коли сама клітинка завелика.
+const TILE: float = 130.0
+
+const TERRAIN_GRASS: int = 0
+const TERRAIN_DIRT: int = 1
+const TERRAIN_FIELD: int = 2
+
+## Vector2i -> один із TERRAIN_*. Трави тут немає: трава — це те, що лишається,
+## коли не записано нічого.
+var _terrain: Dictionary = {}
+## Кілька варіантів трави. Одна плитка на всю карту читається як шпалери,
+## хоч би якою безшовною вона була.
+var _grass_tiles: Array[Texture2D] = []
+## Атласи переходів: 4x4 клітини на кожен вид землі, номер = маска сусідів.
+var _terrain_atlas: Dictionary = {}
 const PATH_WIDTH: float = 118.0
 ## Стежка мусить відрізнятися від трави не лише яскравістю, а й КОЛЬОРОМ:
 ## витоптана земля восени тепла й бура, трава — холодна й зелена. Різниця
@@ -334,6 +361,9 @@ func _load_world(mode: WorldMode.Mode) -> void:
 	# за них на знімках, було просто плямами трави.
 	_road_texture = null
 	_dirt_texture = null
+	_terrain.clear()
+	_grass_tiles.clear()
+	_terrain_atlas.clear()
 	_paths.clear()
 	_yards.clear()
 	_dirt.clear()
@@ -388,30 +418,34 @@ func _build_plyn() -> Vector3:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 20260828
 
-	# ПЛОЩА, А НЕ СМУГА.
-	#
-	# Було 5200 завширшки й 1560 завглибшки — п'ять екранів убік і один углиб.
-	# По такому не поживеш: у ньому можна тільки їхати повз. Поселення, по
-	# якому ходять, мусить бути приблизно квадратним, щоб напрямок «углиб»
-	# важив стільки ж, скільки «вбік».
-	_plates.append(Rect2(-1700.0, -1250.0, 3400.0, 2500.0))
+	# Плита більше НЕ МАЛЮЄТЬСЯ — вона лишилася тільки як межа, у якій живуть
+	# зіткнення й прохідна зона. Земля тепер малюється клітинками на весь
+	# видимий кадр, тож у поля немає краю: за селом просто далі поле.
+	_plates.append(Rect2(-1900.0, -1400.0, 3800.0, 2800.0))
 
-	# --- стежки ---------------------------------------------------------------
-	# Головна тягнеться з півдня, від входу в село, до каплиці на півночі.
-	# Поперечна перетинає її біля криниці. Решта — відгалуження до дворів.
-	# Ламані, а не прямі: пряма лінія в селі означає, що її хтось креслив.
-	_road_texture = load("res://art/plyn/road.png") as Texture2D
-	_dirt_texture = load("res://art/plyn/dirt.png") as Texture2D
+	# --- земля ---------------------------------------------------------------
+	for name: String in ["grass_a", "grass_b"]:
+		var g: Texture2D = load("res://art/plyn/%s.png" % name) as Texture2D
+		if g != null:
+			_grass_tiles.append(g)
+
+	var dirt: Texture2D = load("res://art/plyn/terrain_dirt.png") as Texture2D
+	if dirt != null:
+		_terrain_atlas[TERRAIN_DIRT] = dirt
+
+	# --- стежки --------------------------------------------------------------
+	# Стежка тепер не смуга поверх землі, а САМА ЗЕМЛЯ: клітинки міняють вид,
+	# а атлас переходів сам з'єднує сусідів і заокруглює кінці.
 	_paths = [
 		PackedVector2Array([
-			Vector2(-80.0, 1250.0), Vector2(-20.0, 980.0), Vector2(40.0, 700.0),
+			Vector2(-80.0, 1330.0), Vector2(-20.0, 980.0), Vector2(40.0, 700.0),
 			Vector2(60.0, 420.0), Vector2(30.0, 180.0), Vector2(70.0, -140.0),
 			Vector2(-30.0, -560.0), Vector2(-140.0, -980.0),
 		]),
 		PackedVector2Array([
-			Vector2(-1560.0, 300.0), Vector2(-1120.0, 200.0), Vector2(-620.0, 250.0),
+			Vector2(-1700.0, 300.0), Vector2(-1120.0, 200.0), Vector2(-620.0, 250.0),
 			Vector2(30.0, 180.0), Vector2(520.0, 250.0), Vector2(1080.0, 180.0),
-			Vector2(1600.0, 260.0),
+			Vector2(1700.0, 260.0),
 		]),
 		PackedVector2Array([
 			Vector2(40.0, 700.0), Vector2(-260.0, 760.0), Vector2(-560.0, 720.0),
@@ -425,29 +459,18 @@ func _build_plyn() -> Vector3:
 		PackedVector2Array([
 			Vector2(-620.0, 250.0), Vector2(-800.0, -40.0), Vector2(-870.0, -250.0),
 		]),
-		PackedVector2Array([
-			Vector2(1080.0, 180.0), Vector2(1230.0, 20.0), Vector2(1270.0, -70.0),
-		]),
 	]
+	for path: PackedVector2Array in _paths:
+		_paint_path(path, 165.0, TERRAIN_DIRT)
 
-	# --- ДВОРИ ----------------------------------------------------------------
-	#
-	# Раніше хати ставилися просто за координатами — і налазили одна на одну,
-	# на дерева й на стежки. Купа замість вулиці.
-	#
-	# Тепер спершу розмічаються ДВОРИ: прямокутники землі, у межах яких не
-	# стоїть нічого чужого. Координати задають ЗАДУМ (де приблизно чий двір),
-	# а _relax_yards() розсовує їх, поки накладки не зникнуть. Дає план, який
-	# виглядає планованим, але не накресленим — точні координати руками дають
-	# або сітку, або купу.
-	#
+	# --- двори ----------------------------------------------------------------
 	# x, глибина, ширина будівлі, тип: 0 — хата, 1 — стодола, 2 — каплиця
 	var plots: Array[Vector4] = [
-		Vector4(-140.0, -1060.0, 430.0, 2.0),   # каплиця — орієнтир на півночі
-		Vector4(-560.0, 640.0, 470.0, 0.0),     # хата батьків — найбільша
-		Vector4(-700.0, -280.0, 420.0, 0.0),    # староста
-		Vector4(780.0, -280.0, 400.0, 0.0),     # кузня
-		Vector4(1080.0, 240.0, 520.0, 1.0),     # комора
+		Vector4(-140.0, -1060.0, 430.0, 2.0),
+		Vector4(-560.0, 640.0, 470.0, 0.0),
+		Vector4(-700.0, -280.0, 420.0, 0.0),
+		Vector4(780.0, -280.0, 400.0, 0.0),
+		Vector4(1080.0, 240.0, 520.0, 1.0),
 		Vector4(-1120.0, 700.0, 480.0, 1.0),
 		Vector4(520.0, -600.0, 460.0, 1.0),
 		Vector4(-460.0, 980.0, 500.0, 1.0),
@@ -466,9 +489,6 @@ func _build_plyn() -> Vector3:
 		Vector4(-200.0, 1040.0, 380.0, 0.0),
 		Vector4(280.0, 1090.0, 360.0, 0.0),
 	]
-
-	# Двір ширший за будівлю: різниця і є та «зона комфорту», через яку сусід
-	# не влазить у чужу землю.
 	for plot: Vector4 in plots:
 		_yards.append(Rect2(
 			plot.x - plot.z * 0.72, plot.y - plot.z * 0.56,
@@ -476,11 +496,11 @@ func _build_plyn() -> Vector3:
 		))
 	_relax_yards(24, 46.0)
 
-	var hats: Array[Texture2D] = []
+	var huts: Array[Texture2D] = []
 	for name: String in ["hut_1", "hut_2", "hut_3", "hut_4", "hut_5"]:
 		var tex: Texture2D = load("res://art/plyn/%s.png" % name) as Texture2D
 		if tex != null:
-			hats.append(tex)
+			huts.append(tex)
 
 	var barns: Array[Texture2D] = []
 	for name: String in ["barn_1", "barn_2", "barn_3"]:
@@ -494,80 +514,53 @@ func _build_plyn() -> Vector3:
 		var plot: Vector4 = plots[i]
 		var yard: Rect2 = _yards[i]
 		var mid: Vector2 = yard.get_center()
-		# Будівля стоїть у ГЛИБИНІ двору, а не посередині: перед хатою має
-		# лишатися земля, інакше двору не видно, видно тільки хату.
+		# Будівля стоїть у ГЛИБИНІ двору: перед нею має лишатися земля,
+		# інакше двору не видно, видно тільки хату.
 		var here := Vector3(mid.x, mid.y - yard.size.y * 0.17, 0.0)
 
 		var tex: Texture2D = null
 		match int(plot.w):
 			2: tex = chapel
 			1: tex = barns[i % barns.size()] if not barns.is_empty() else null
-			_: tex = hats[i % hats.size()] if not hats.is_empty() else null
+			_: tex = huts[i % huts.size()] if not huts.is_empty() else null
 		_props.append(_sprite_prop(here, plot.z, tex, true))
 
-		# Витоптана земля довкола будівлі.
-		_dirt.append(Vector3(mid.x, mid.y + yard.size.y * 0.10, plot.z * 0.62))
-
-	# Криниця на перехресті стежок. Свій маленький двір їй теж належить.
-	var well: Texture2D = load("res://art/plyn/krynytsia.png") as Texture2D
-	if well != null:
-		_props.append(_sprite_prop(Vector3(140.0, 300.0, 0.0), 190.0, well, true))
-		_dirt.append(Vector3(140.0, 315.0, 190.0))
-
-	# --- паркани --------------------------------------------------------------
-	# Паркан іде по передньому краю двору — тому боку, що дивиться на стежку.
-	# Раніше він стояв за окремим списком координат і не мав стосунку до хат.
-	var fences: Array[Texture2D] = []
-	for name: String in ["parkan", "parkan_b"]:
-		var ftex: Texture2D = load("res://art/plyn/%s.png" % name) as Texture2D
-		if ftex != null:
-			fences.append(ftex)
-
-	if not fences.is_empty():
-		for i: int in _yards.size():
-			# Не в кожного двору паркан: суцільна огорожа скрізь читається як
-			# табір, а не як село.
-			if i % 3 == 2:
-				continue
-			var yard: Rect2 = _yards[i]
-			var mid: Vector2 = yard.get_center()
-			_props.append(_sprite_prop(
-				Vector3(mid.x, yard.end.y - 26.0, 0.0), yard.size.x * 0.86,
-				fences[i % fences.size()], false, 0.22
-			))
+		# Витоптаний двір перед будівлею — теж клітинками, а не плямою поверх.
+		_paint_disc(
+			Vector2(mid.x, mid.y + yard.size.y * 0.14), plot.z * 0.52, TERRAIN_DIRT
+		)
 
 	# --- дерева й каміння -----------------------------------------------------
-	# Ліс по колу — це і межа світу, і причина, чому вона там. Стіну ставити
-	# не треба: у ліс просто не йдуть.
 	var trees: Array[Texture2D] = []
 	for name: String in ["tree_a", "tree_a_m", "tree_b", "tree_b_m"]:
 		var ttex: Texture2D = load("res://art/plyn/%s.png" % name) as Texture2D
 		if ttex != null:
 			trees.append(ttex)
 
+	# Ліс по колу — це і межа світу, і причина, чому вона там: стіну ставити
+	# не треба, у ліс просто не йдуть. Тепер він щільніший і в кілька рядів,
+	# бо за ним земля вже нічим не обмежена й порожнеча має бути закрита.
 	if not trees.is_empty():
-		for i: int in range(78):
-			var ang: float = (float(i) + rng.randf_range(-0.42, 0.42)) / 78.0 * TAU
-			var rx: float = 1520.0 + rng.randf_range(-160.0, 420.0)
-			var ry: float = 1080.0 + rng.randf_range(-130.0, 330.0)
-			var pos := Vector3(cos(ang) * rx, sin(ang) * ry, 0.0)
-			# Південний в'їзд лишаємо відкритим — село мусить мати вхід.
-			if absf(pos.x) < 260.0 and pos.y > 900.0:
-				continue
-			if _in_yard(pos, 30.0) or _on_path(pos, 130.0):
-				continue
-			_props.append(_sprite_prop(
-				pos, rng.randf_range(230.0, 340.0),
-				trees[rng.randi() % trees.size()], true
-			))
+		for ring: int in range(3):
+			for i: int in range(64):
+				var ang: float = (float(i) + rng.randf_range(-0.45, 0.45)) / 64.0 * TAU
+				var rx: float = 1560.0 + float(ring) * 230.0 + rng.randf_range(-120.0, 200.0)
+				var ry: float = 1150.0 + float(ring) * 180.0 + rng.randf_range(-90.0, 160.0)
+				var pos := Vector3(cos(ang) * rx, sin(ang) * ry, 0.0)
+				if absf(pos.x) < 240.0 and pos.y > 980.0:
+					continue  # південний в'їзд
+				if _in_yard(pos, 30.0) or _on_path(pos, 150.0):
+					continue
+				_props.append(_sprite_prop(
+					pos, rng.randf_range(230.0, 340.0),
+					trees[rng.randi() % trees.size()], true
+				))
 
-		# Кілька дерев усередині села — але тільки там, де вони нікому не
-		# заважають: не в чужому дворі й не посеред стежки.
-		for i: int in range(16):
+		for i: int in range(18):
 			var pos := Vector3(
 				rng.randf_range(-1350.0, 1350.0), rng.randf_range(-950.0, 1050.0), 0.0
 			)
-			if _in_yard(pos, 60.0) or _on_path(pos, 140.0) or _too_close(pos, 300.0):
+			if _in_yard(pos, 60.0) or _on_path(pos, 150.0) or _too_close(pos, 300.0):
 				continue
 			_props.append(_sprite_prop(
 				pos, rng.randf_range(240.0, 310.0),
@@ -575,23 +568,20 @@ func _build_plyn() -> Vector3:
 			))
 
 	var bushes: Array[Texture2D] = []
-	for name: String in ["bush_a", "bush_a_m", "bush_b", "bush_b_m", "pomist"]:
+	for name: String in ["bush_a", "bush_a_m", "bush_b", "bush_b_m"]:
 		var btex2: Texture2D = load("res://art/plyn/%s.png" % name) as Texture2D
 		if btex2 != null:
 			bushes.append(btex2)
 
-	# Каміння й купи. Розкидані випадково НАВМИСНО: на відміну від хат, це не
-	# чиєсь рішення, а те, що просто лежить. Але не в чужому дворі й не на
-	# стежці — там воно читалося б як недогляд, а не як камінь.
 	if not bushes.is_empty():
-		for i: int in range(70):
+		for i: int in range(80):
 			var pos := Vector3(
-				rng.randf_range(-1500.0, 1500.0), rng.randf_range(-1040.0, 1120.0), 0.0
+				rng.randf_range(-1800.0, 1800.0), rng.randf_range(-1250.0, 1300.0), 0.0
 			)
-			if _in_yard(pos, 20.0) or _on_path(pos, 95.0) or _too_close(pos, 195.0):
+			if _in_yard(pos, 20.0) or _on_path(pos, 105.0) or _too_close(pos, 190.0):
 				continue
 			_props.append(_sprite_prop(
-				pos, rng.randf_range(150.0, 260.0),
+				pos, rng.randf_range(150.0, 250.0),
 				bushes[rng.randi() % bushes.size()], false, 0.45
 			))
 
@@ -605,17 +595,11 @@ func _build_plyn() -> Vector3:
 			rng.randf_range(0.35, 0.8), rng.randf_range(0.0, TAU)
 		))
 
-	# ПЛИНЬ — паралакс помірний. У трьох чвертях камера ходить в обидва боки,
-	# і далина здебільшого лежить углиб, а не вбік.
-	# Шари нарізані з ОДНОГО затвердженого кадру Тихої Балки
-	# (tools/cut_band.py). Це метод Міші й він правильніший за генерацію шарів
-	# нарізно: у готовому кадрі вже є і композиція, і палітра, і повітряна
-	# перспектива — далекі гребені сині й бліді не тому, що я так вирішив,
-	# а тому, що художник так намалював. Шість окремих генерацій цього не дають.
+	# Далина. Три смуги, нарізані з затвердженого кадру Тихої Балки: над лісом
+	# видно пагорби, і саме вони кажуть, що світ не закінчується за деревами.
 	var far_hills: Texture2D = load("res://art/plyn/hills_far.png") as Texture2D
 	var mid_hills: Texture2D = load("res://art/plyn/hills_mid.png") as Texture2D
 	var treeline: Texture2D = load("res://art/plyn/treeline.png") as Texture2D
-	var grass: Texture2D = load("res://art/plyn/grass_front.png") as Texture2D
 
 	if far_hills != null:
 		_backdrops.append(Backdrop.textured(
@@ -629,22 +613,13 @@ func _build_plyn() -> Vector3:
 		_backdrops.append(Backdrop.textured(
 			0.45, treeline, 0.70, Color(1.0, 1.0, 1.0), 70.0, 18.0, 3.3
 		))
-	# Серпанок між лінією дерев і селом. Він тут не для краси: без нього
-	# намальована далина сідає впритул до гравця.
-	_backdrops.append(Backdrop.new(0.62, Backdrop.Kind.HAZE,
-		Color(0.82, 0.85, 0.83, 0.22), 30.0, 0.0, 0.0, 0.0, 130.0))
-	# Переднього плану тут більше немає. Він мав сенс, поки камера стояла
-	# близько й щось могло пролітати повз неї. На віддаленні, з якого видно
-	# все село, він перетворився на світлу смугу впоперек кадру.
-	if grass != null:
-		pass
 
 	# Культ Сліз прийшов у Балку. Бій живе в Плині: у Ниці його майже немає,
 	# а у Висі немає взагалі — див. docs/03-геймплей.md.
 	_enemies.append(Enemy.new(Vector3(560.0, 120.0, 0.0)))
 	_enemies.append(Enemy.new(Vector3(-640.0, 380.0, 0.0)))
 
-	return Vector3(0.0, 0.0, 0.0)
+	return Vector3(0.0, 620.0, 0.0)
 
 
 ## НИЦЬ — «Перший шар». Коридор: глибини немає, є тільки довжина й висота.
@@ -1127,8 +1102,12 @@ func _draw() -> void:
 
 	draw_rect(_visible_rect(), _sky)
 	_draw_backdrops(false)
-	for plate: Rect2 in _plates:
-		_draw_plate(plate, flat, mapn)
+	# Карта клітинками там, де вона є; стара суцільна плита — де немає.
+	if not _grass_tiles.is_empty():
+		_draw_terrain()
+	else:
+		for plate: Rect2 in _plates:
+			_draw_plate(plate, flat, mapn)
 
 	# Один список усього, що стоїть на землі, відсортований по глибині.
 	# x = ключ сортування, y = тип обʼєкта, z = індекс.
@@ -1269,6 +1248,41 @@ func _on_path(pos: Vector3, half_width: float) -> bool:
 	return false
 
 
+## Вимощує клітинки вздовж ламаної. Саме так стежка з'являється на карті:
+## не як намальована смуга поверх землі, а як зміна САМОЇ землі.
+func _paint_path(points: PackedVector2Array, radius: float, kind: int) -> void:
+	for i: int in range(points.size() - 1):
+		var a: Vector2 = points[i]
+		var b: Vector2 = points[i + 1]
+		var steps: int = maxi(int(a.distance_to(b) / (TILE * 0.4)), 1)
+		for s: int in range(steps + 1):
+			_paint_disc(a.lerp(b, float(s) / float(steps)), radius, kind)
+
+
+## Вимощує коло клітинок. Радіус у світових одиницях, а не в клітинках:
+## так усе на карті міряється однією міркою.
+func _paint_disc(centre: Vector2, radius: float, kind: int) -> void:
+	var r: int = int(ceil(radius / TILE))
+	var mid := Vector2i(int(round(centre.x / TILE)), int(round(centre.y / TILE)))
+	for dy: int in range(-r, r + 1):
+		for dx: int in range(-r, r + 1):
+			var cell: Vector2i = mid + Vector2i(dx, dy)
+			var here := Vector2(float(cell.x) * TILE, float(cell.y) * TILE)
+			if here.distance_to(centre) <= radius:
+				_terrain[cell] = kind
+
+
+## Вимощує прямокутник клітинок.
+func _paint_rect(area: Rect2, kind: int) -> void:
+	var x0: int = int(floor(area.position.x / TILE))
+	var x1: int = int(ceil(area.end.x / TILE))
+	var y0: int = int(floor(area.position.y / TILE))
+	var y1: int = int(ceil(area.end.y / TILE))
+	for cy: int in range(y0, y1):
+		for cx: int in range(x0, x1):
+			_terrain[Vector2i(cx, cy)] = kind
+
+
 ## Чи не надто близько до вже поставленого. Потрібно тільки дрібноті, яку
 ## розкидає випадок: хати й стежки розставлені руками й самі себе не чіпають.
 func _too_close(pos: Vector3, gap: float) -> bool:
@@ -1343,6 +1357,62 @@ func _draw_path_link(from_world: Vector2, to_world: Vector2) -> void:
 		false, PATH_TINT
 	)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+## Прямокутник клітинки на екрані. Клітинка квадратна у світі, тож по
+## вертикалі її стискає та сама глибина, що й усе інше.
+func _cell_rect(cell: Vector2i) -> Rect2:
+	var top_left: Vector2 = Projector.project(
+		Vector3(float(cell.x) * TILE, float(cell.y) * TILE, 0.0)
+	)
+	return Rect2(top_left, Vector2(TILE, TILE * Projector.depth_scale))
+
+
+## Яка трава лягає на цю клітинку. Не випадково, а від координат: карта мусить
+## виглядати однаково щоразу, інакше знімки не порівняти між собою.
+func _grass_at(cell: Vector2i) -> Texture2D:
+	var h: int = absi(cell.x * 73856093 ^ cell.y * 19349663)
+	return _grass_tiles[h % _grass_tiles.size()]
+
+
+func _draw_terrain() -> void:
+	var view: Rect2 = _visible_rect()
+	# Межі в клітинках. Трава малюється на ВЕСЬ видимий кадр, а не по межах
+	# карти: у поля немає краю, і намальований край одразу читається як коробка.
+	var depth: float = maxf(Projector.depth_scale, 0.001)
+	var x0: int = int(floor(view.position.x / TILE)) - 1
+	var x1: int = int(ceil(view.end.x / TILE)) + 1
+	var y0: int = int(floor(view.position.y / (TILE * depth))) - 1
+	var y1: int = int(ceil(view.end.y / (TILE * depth))) + 1
+
+	for cy: int in range(y0, y1):
+		for cx: int in range(x0, x1):
+			var cell := Vector2i(cx, cy)
+			draw_texture_rect(_grass_at(cell), _cell_rect(cell), false)
+
+	# Другим проходом — усе, що лежить поверх трави. Окремим проходом, бо
+	# інакше стежка сусідньої клітинки лягала б під траву наступної.
+	for cell: Vector2i in _terrain:
+		var kind: int = _terrain[cell]
+		if not _terrain_atlas.has(kind):
+			continue
+		var rect: Rect2 = _cell_rect(cell)
+		if not view.intersects(rect):
+			continue
+		var atlas: Texture2D = _terrain_atlas[kind]
+		var n: float = float(atlas.get_width()) * 0.25
+		# Малюємо ОКРУГЛУ ПЛЯМУ, БІЛЬШУ ЗА КЛІТИНКУ, а не підігнану під неї.
+		#
+		# Спершу тут була чесна логіка сусідів: клітинка доростала до краю там,
+		# де поруч така сама земля. Але з'єднання виходило хрестом, і на кутах
+		# між чотирма клітинками лишалися дірки — стежка читалася шахівницею.
+		# Правильно це лікується набором із сорока семи плиток, які знають ще
+		# й діагональних сусідів. Тут дешевше й не гірше: плями просто
+		# перекриваються й зливаються, а кінець стежки заокруглюється сам.
+		draw_texture_rect_region(
+			atlas, rect.grow(TILE * 0.34),
+			Rect2(Vector2.ZERO, Vector2(n, n))
+		)
+
+
 func _tile_texture(
 	tex: Texture2D, area: Rect2, scale: float, tint: Color
 ) -> void:

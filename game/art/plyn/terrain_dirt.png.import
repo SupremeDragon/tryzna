@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://nluchihmoegq"
-path="res://.godot/imported/parkan.png-6439787e600ae9cf2b1b3640aeb7f82b.ctex"
+uid="uid://bqcbo0d4iqrdm"
+path="res://.godot/imported/terrain_dirt.png-80a9b1771d97d5abc8cf3bb98c932520.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/plyn/parkan.png"
-dest_files=["res://.godot/imported/parkan.png-6439787e600ae9cf2b1b3640aeb7f82b.ctex"]
+source_file="res://art/plyn/terrain_dirt.png"
+dest_files=["res://.godot/imported/terrain_dirt.png-80a9b1771d97d5abc8cf3bb98c932520.ctex"]
 
 [params]
 

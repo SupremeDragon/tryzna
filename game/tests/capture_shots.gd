@@ -112,7 +112,7 @@ func _capture_parallax(dir: String) -> void:
 
 	for world: Dictionary in [
 		{"mode": 2, "name": "nyts", "from": -3000.0, "step": 900.0, "zoom": 0.9},
-		{"mode": 1, "name": "plyn", "from": -700.0, "step": 900.0, "zoom": 0.48},
+		{"mode": 1, "name": "plyn", "from": -700.0, "step": 900.0, "zoom": 0.36},
 	]:
 		var mode: int = int(world["mode"])
 		WorldMode.set_mode(mode as WorldMode.Mode)

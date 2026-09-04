@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://6iihjhj3yxie"
-path="res://.godot/imported/hata_a.png-737d46de41a21f15fea52bb09e528654.ctex"
+uid="uid://dird6aoj5nqop"
+path="res://.godot/imported/grass_a.png-23a020998b3487019bbe9fbbb14de186.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/plyn/hata_a.png"
-dest_files=["res://.godot/imported/hata_a.png-737d46de41a21f15fea52bb09e528654.ctex"]
+source_file="res://art/plyn/grass_a.png"
+dest_files=["res://.godot/imported/grass_a.png-23a020998b3487019bbe9fbbb14de186.ctex"]
 
 [params]
 

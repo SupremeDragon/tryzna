@@ -269,6 +269,67 @@ JOBS: dict[str, dict] = {
             "grass field, landscape, snow, brick, modern"
         ),
     },
+    # --- ТАЙЛСЕТ ПЛИНІ -------------------------------------------------------
+    # Земля тепер не одна картинка на весь світ, а КЛІТИНКИ. Тайл мусить бути
+    # знятий СТРОГО ЗВЕРХУ й без жодної тіні: тінь усередині тайла повторюється
+    # разом із ним і одразу видає сітку. З тієї ж причини — «no objects»:
+    # камінь у тайлі стане камінням через кожні два метри.
+    "tile-grass": {
+        "subject": (
+            "extreme close up of thick meadow grass, dense blades and moss, "
+            "wisps of dry yellow straw, camera directly overhead one metre "
+            "away, the grass fills the entire frame, hand painted texture, "
+            "no flowers, no bushes, no path, no horizon, no distance"
+        ),
+        "world": "plyn",
+        "light": "backdrop",
+        "size": (512, 512),
+        "cfg": 6.5,
+        "steps": 30,
+        "extra_negative": "perspective, horizon, sky, tree, building, person, vignette",
+    },
+    "tile-dirt": {
+        "subject": (
+            "extreme close up of bare packed earth ground, brown soil with "
+            "small pebbles and dry clods, camera directly overhead one metre "
+            "away, the ground fills the entire frame, hand painted texture, "
+            "no path, no road, no horizon, no distance"
+        ),
+        "world": "plyn",
+        "light": "backdrop",
+        "size": (512, 512),
+        "cfg": 6.5,
+        "steps": 30,
+        "extra_negative": "perspective, horizon, sky, tree, building, person, vignette",
+    },
+    "tile-field": {
+        "subject": (
+            "top down view of a ploughed vegetable bed, dark brown soil in "
+            "straight parallel furrows with small green sprouts in rows, "
+            "hand painted texture, seen straight from above, fills the whole "
+            "square evenly, no horizon"
+        ),
+        "world": "plyn",
+        "light": "backdrop",
+        "size": (512, 512),
+        "cfg": 6.5,
+        "steps": 30,
+        "extra_negative": "perspective, horizon, sky, tree, building, person, vignette",
+    },
+    "tile-stone": {
+        "subject": (
+            "top down view of old cobblestone paving, rounded grey field "
+            "stones set in earth with moss in the joints, hand painted "
+            "texture, seen straight from above, fills the whole square "
+            "evenly, no horizon"
+        ),
+        "world": "plyn",
+        "light": "backdrop",
+        "size": (512, 512),
+        "cfg": 6.5,
+        "steps": 30,
+        "extra_negative": "perspective, horizon, sky, tree, building, person, vignette",
+    },
     # Каплиця Тихої Балки. Єдина будівля села, якої немає на затвердженому
     # кадрі, тому її доводиться генерувати, а не вирізати. Режим «object»:
     # її світитиме рушій, і на самій картинці тіней бути не повинно.

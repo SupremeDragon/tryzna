@@ -87,11 +87,23 @@ def fill_holes(rgba: Image.Image, edge: int = 40) -> Image.Image:
     outside.paste(alpha.point(lambda v: 255 if v > edge else 0), (1, 1))
     ImageDraw.floodfill(outside, (0, 0), 128)
 
-    solid = outside.crop((1, 1, w + 1, h + 1)).point(
+    inner = outside.crop((1, 1, w + 1, h + 1)).point(
         lambda v: 0 if v == 128 else 255
     )
+
+    # Дві дії, і обидві потрібні.
+    #
+    # 1. Все, що ВСЕРЕДИНІ контуру, стає непрозорим — це лікує прозорі стіни.
+    # 2. Все, що ЗЗОВНІ, множиться на нуль — це лікує «квадратики». Поріг
+    #    лишає навколо предмета ледь помітну рамку майже-тла, і в грі вона
+    #    читається як прямокутник довкола кожної хати. Порогом її не прибрати:
+    #    вона й є те, що поріг не добрав.
+    #
+    # Край згладжуємо розмиттям МАСКИ, а не альфи: так силует лишається
+    # чистим, але не рветься пилкою.
+    soft = inner.filter(ImageFilter.GaussianBlur(1.1))
     out = rgba.copy()
-    out.putalpha(ImageChops.lighter(alpha, solid))
+    out.putalpha(ImageChops.multiply(ImageChops.lighter(alpha, inner), soft))
     return out
 
 

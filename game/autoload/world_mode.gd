@@ -44,7 +44,7 @@ const HEIGHT_FOR: Dictionary = {
 ## зблизька це просто хата в траві. Висі — карта, її видно найдалі.
 const ZOOM_FOR: Dictionary = {
 	Mode.VYS: 0.40,
-	Mode.PLYN: 0.48,
+	Mode.PLYN: 0.36,
 	Mode.NYTS: 0.90,
 }
 
