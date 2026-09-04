@@ -57,6 +57,11 @@ class Prop extends RefCounted:
 	var tint: float = 0.0
 	## Чи впирається в неї тіло. Помости в Плині й ґрати позаду в Ниці — ні.
 	var solid: bool = true
+	## Намальована картинка замість коробки. Коробка лишається завжди —
+	## вона й далі задає зіткнення, а спрайт тільки закриває її собою.
+	## Через це можна малювати село й не переробляти фізику.
+	var texture: Texture2D = null
+	var tex_scale: float = 1.0
 
 	func _init(
 		p_pos: Vector3, p_size: Vector2, p_height: float, p_tint: float,
@@ -209,6 +214,7 @@ var _backdrops: Array[Backdrop] = []
 
 ## Намальована підлога. Є тільки там, де рівень справді площинний.
 var _floor_texture: Texture2D = null
+var _ground_texture: Texture2D = null
 
 ## Уступ — це шматок тієї самої кам'яної підлоги, піднятий над землею.
 ## Тому окремої текстури не малюємо: беремо ту, що вже є.
@@ -318,6 +324,10 @@ func _load_world(mode: WorldMode.Mode) -> void:
 	_floor_texture = load("res://art/nyts/floor.png") as Texture2D \
 		if mode == WorldMode.Mode.NYTS else null
 	_ledge_texture = _floor_texture
+	# Земля Плині — намальована трава, а не заливка кольором. У Висі землі
+	# немає взагалі: там карта, і плита має лишатися умовною.
+	_ground_texture = load("res://art/plyn/ground.png") as Texture2D \
+		if mode == WorldMode.Mode.PLYN else null
 
 	_solid_world.clear()
 	for prop: Prop in _props:
@@ -342,33 +352,78 @@ func _build_plyn() -> Vector3:
 
 	_plates.append(Rect2(-2600.0, -420.0, 5200.0, 1560.0))
 
-	# Хати навколо майдану.
+	# Хати навколо майдану. Картинки вирізані з того самого затвердженого
+	# кадру Тихої Балки, що й фон (tools/cut_prop.py) — тому вони й стоять
+	# у тому самому ракурсі й тій самій палітрі, що пагорби позаду.
+	var hatas: Array[Texture2D] = []
+	for name: String in ["hata_a", "hata_b", "hata_c", "hata_d", "hata_e"]:
+		var tex: Texture2D = load("res://art/plyn/%s.png" % name) as Texture2D
+		if tex != null:
+			hatas.append(tex)
+
 	for i: int in range(6):
 		var x: float = -1250.0 + float(i) * 520.0
 		for j: int in range(3):
 			var y: float = 140.0 + float(j) * 330.0
 			if absf(x) < 320.0 and j == 0:
 				continue  # майдан перед гравцем лишаємо порожнім
-			_props.append(Prop.new(
+			var hata := Prop.new(
 				Vector3(x + rng.randf_range(-70.0, 70.0), y, 0.0),
 				Vector2(rng.randf_range(190.0, 290.0), rng.randf_range(170.0, 250.0)),
 				rng.randf_range(70.0, 190.0),
 				rng.randf()
-			))
+			)
+			if not hatas.is_empty():
+				hata.texture = hatas[(i * 3 + j) % hatas.size()]
+				# Хата має бути помітно ширшою за свою коробку зіткнення:
+				# в неї впираються стінами, а не звисом стріхи.
+				hata.tex_scale = (
+					hata.size.x * 1.75 / float(hata.texture.get_width())
+				)
+			_props.append(hata)
 
 	# Низькі помости. Не суцільні: через них переступають, їх не обходять.
+	# Напівпрозорий сірий бокс тут вимивав півсела, тому вони теж мальовані.
+	var pomist: Texture2D = load("res://art/plyn/pomist.png") as Texture2D
 	for k: int in range(5):
-		_props.append(Prop.new(
+		var deck := Prop.new(
 			Vector3(-1000.0 + float(k) * 500.0, 620.0, 0.0),
 			Vector2(340.0, 300.0), 22.0, 0.15, false
-		))
+		)
+		if pomist != null:
+			deck.texture = pomist
+			deck.tex_scale = 300.0 / float(pomist.get_width())
+		_props.append(deck)
 
-	# Каплиця й дзвіниці на дальньому краї.
+	# Криниця посеред майдану. Єдина річ, до якої в селі сходяться всі.
+	var well: Texture2D = load("res://art/plyn/krynytsia.png") as Texture2D
+	var well_prop := Prop.new(Vector3(180.0, 430.0, 0.0), Vector2(110.0, 90.0), 90.0, 0.4)
+	if well != null:
+		well_prop.texture = well
+		well_prop.tex_scale = 150.0 / float(well.get_width())
+	_props.append(well_prop)
+
+	# Каплиця й дзвіниці на дальньому краї. Єдина будівля села, якої немає
+	# на затвердженому кадрі, тому її довелося згенерувати окремо.
+	var chapels: Array[Texture2D] = []
+	for name: String in ["kaplytsia", "kaplytsia_b"]:
+		var ctex: Texture2D = load("res://art/plyn/%s.png" % name) as Texture2D
+		if ctex != null:
+			chapels.append(ctex)
 	for m: int in range(4):
-		_props.append(Prop.new(
+		var tower := Prop.new(
 			Vector3(-820.0 + float(m) * 560.0, -280.0, 0.0),
 			Vector2(240.0, 200.0), 360.0 + float(m) * 70.0, 0.85
-		))
+		)
+		if not chapels.is_empty():
+			# Дзеркальний варіант через один плюс різний масштаб. Одна картинка,
+			# але ряд перестає читатися як копіпаст — те саме, що Міша сказав
+			# про персонажа: та сама фігура, змінюється тільки поза.
+			tower.texture = chapels[m % chapels.size()]
+			tower.tex_scale = (
+				(292.0 + float(m) * 52.0) / float(tower.texture.get_width())
+			)
+		_props.append(tower)
 
 	# Селяни. Поки ти живий — вони ходять.
 	for w: int in range(9):
@@ -409,7 +464,7 @@ func _build_plyn() -> Vector3:
 	# Передній план: летить швидше за гравця. Найдешевший спосіб додати обʼєм.
 	if grass != null:
 		_backdrops.append(Backdrop.textured(
-			1.45, grass, 1.15, Color(0.72, 0.74, 0.70, 0.88), -1040.0
+			1.45, grass, 1.30, Color(0.66, 0.68, 0.62, 1.0), -1320.0
 		))
 
 	# Культ Сліз прийшов у Балку. Бій живе в Плині: у Ниці його майже немає,
@@ -932,6 +987,40 @@ func _draw() -> void:
 		draw_rect(_visible_rect(), Color(_veil_color, _veil))
 
 
+## Малює споруду картинкою. Прив'язка — НИЖНІЙ край, а не центр: будівля
+## стоїть на землі, і саме місце дотику має збігатися з її позицією,
+## інакше хати попливуть відносно тіней і одна одної.
+func _draw_prop_sprite(prop: Prop, fade: float) -> void:
+	var foot: Vector2 = Projector.project(prop.pos)
+	var tw: float = float(prop.texture.get_width()) * prop.tex_scale
+	var th: float = float(prop.texture.get_height()) * prop.tex_scale
+	# Клапоть трави знизу вирізки — це і є дотик до землі, тому низ
+	# спрайта опускається трохи нижче за точку основи.
+	var rect := Rect2(foot - Vector2(tw * 0.5, th * 0.88), Vector2(tw, th))
+	draw_texture_rect(prop.texture, rect, false, Color(1.0, 1.0, 1.0, 1.0 - fade))
+
+
+## Тиляє текстуру по прямокутнику. Малювання тут іде в _draw() без окремих
+## вузлів, тому плитки рахуємо руками — заразом видно, скільки їх насправді.
+func _tile_texture(
+	tex: Texture2D, area: Rect2, scale: float, tint: Color
+) -> void:
+	var tw: float = float(tex.get_width()) * scale
+	var th: float = float(tex.get_height()) * scale
+	if tw < 4.0 or th < 4.0:
+		return
+
+	var x0: float = floor(area.position.x / tw) * tw
+	var y0: float = floor(area.position.y / th) * th
+	var y: float = y0
+	while y < area.end.y:
+		var x: float = x0
+		while x < area.end.x:
+			draw_texture_rect(tex, Rect2(Vector2(x, y), Vector2(tw, th)), false, tint)
+			x += tw
+		y += th
+
+
 ## Зони ударів — це РОЗМІТКА НА ЗЕМЛІ, і малювати її треба разом із землею,
 ## а не разом із тілами. Інакше вона то виринає перед бійцями, то ховається
 ## за ними залежно від глибини, і бій перестає читатися.
@@ -1156,6 +1245,12 @@ func _draw_plate(plate: Rect2, flat: float, mapn: float) -> void:
 	)
 	draw_rect(rect, _ground)
 
+	# Поверх заливки — намальована земля. Заливка лишається під нею навмисно:
+	# вона задає загальний тон, і якщо текстура не завантажилась, світ не
+	# перетворюється на діру.
+	if _ground_texture != null:
+		_tile_texture(_ground_texture, rect, 0.62, Color(0.94, 0.95, 0.92))
+
 	# Смуга на дальньому краї: у трьох чвертях — далина, у профілі — стіна позаду.
 	if mapn < 0.98:
 		draw_rect(
@@ -1180,7 +1275,9 @@ func _draw_plate(plate: Rect2, flat: float, mapn: float) -> void:
 			draw_texture_rect(
 				_floor_texture,
 				Rect2(Vector2(float(i) * fw, far_y), Vector2(fw, fh)),
-				false, Color(0.92, 0.92, 0.96)
+				# Камінь намальований світлим, бо світлий легше притемнити, ніж
+				# витягнути з темного фактуру. Гасимо тут, а не в картинці.
+				false, Color(0.30, 0.30, 0.34)
 			)
 			i += 1
 
@@ -1235,6 +1332,13 @@ func _draw_grid_on(plate: Rect2, flat: float, mapn: float) -> void:
 
 
 func _draw_prop(prop: Prop, flat: float, mapn: float) -> void:
+	# Намальована споруда заміняє коробку тільки там, де світ ще обʼємний.
+	# У Ниці все читається силуетом, у Висі — планом згори, і в обох
+	# випадках спрайт із трьох чвертей був би брехнею про ракурс.
+	if prop.texture != null and flat < 0.35 and mapn < 0.35:
+		_draw_prop_sprite(prop, maxf(flat, mapn))
+		return
+
 	var hw: float = prop.size.x * 0.5
 	var hd: float = prop.size.y * 0.5
 	var base: Vector3 = prop.pos
@@ -1292,7 +1396,9 @@ func _draw_prop(prop: Prop, flat: float, mapn: float) -> void:
 		draw_texture_rect(
 			_ledge_texture,
 			Rect2(Vector2(base.x - hw, top_y), Vector2(hw * 2.0, bottom_y - top_y)),
-			false, Color(0.88, 0.88, 0.92)
+			# Уступ трохи світліший за підлогу, але саме трохи: він має
+			# читатися як те, на що можна стати, а не світитися в темряві.
+			false, Color(0.42, 0.42, 0.47)
 		)
 	elif mapn < 0.99:
 		draw_colored_polygon(front, Color(face_col, (1.0 - mapn) * pass_through))

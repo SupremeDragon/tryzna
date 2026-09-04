@@ -155,6 +155,25 @@ JOBS: dict[str, dict] = {
             "row of objects, small objects, arch, perspective, vanishing point"
         ),
     },
+    # Підлога Ниці. Це сайд-скрол, тож підлога — широка смуга внизу кадру,
+    # яку видно під невеликим кутом. Головне не дати моделі намалювати
+    # кімнату: потрібна САМА поверхня, від краю до краю.
+    "nyts-floor": {
+        "subject": (
+            "a texture of worn cracked dark stone slabs seen from directly above, "
+            "flat paving of an ancient hall, grey dust in the joints, "
+            "fills the whole frame evenly, no objects on it, no light source, "
+            "no walls, no horizon, no sky, no perspective"
+        ),
+        "world": "nyts",
+        "light": "backdrop",
+        "size": (1024, 384),
+        "cfg": 6.0,
+        "steps": 30,
+        "extra_negative": (
+            "red, blood, moss, landscape, rocks, boulders, hill, fog bank"
+        ),
+    },
     # ПЛИНЬ. Світ смертних, і саме в ньому відбувається весь Акт I — а фон
     # там досі процедурні смуги. Найдальший шар: пагорби Тихої Балки.
     # Пагорби Плині. Перша спроба дала шість туманних лугів без жодного
@@ -179,6 +198,22 @@ JOBS: dict[str, dict] = {
             "mountains, snow, sunset, dramatic clouds, road, fence, buildings, "
             "foreground grass, field in front, water, reflection, birds"
         ),
+    },
+    # Каплиця Тихої Балки. Єдина будівля села, якої немає на затвердженому
+    # кадрі, тому її доводиться генерувати, а не вирізати. Режим «object»:
+    # її світитиме рушій, і на самій картинці тіней бути не повинно.
+    "plyn-chapel": {
+        "subject": (
+            "one small old wooden chapel with a tall shingled bell tower, "
+            "dark weathered timber, steep roof, seen from a high three quarter view, "
+            "standing alone on plain flat pale grey background"
+        ),
+        "world": "plyn",
+        "light": "object",
+        "size": (512, 704),
+        "cfg": 6.5,
+        "steps": 30,
+        "extra_negative": "stone church, dome, cross on top, village, trees, grass",
     },
     # Ближчий шар Плині: смуга лісу. Ріжеться в прозорість, тому тло рівне.
     "plyn-trees": {
