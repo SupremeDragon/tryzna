@@ -229,6 +229,46 @@ JOBS: dict[str, dict] = {
         "steps": 28,
         "extra_negative": "tree, forest, flowers, sky, horizon, buildings, path",
     },
+    # Хати Плині ОКРЕМИМИ ПРЕДМЕТАМИ. Спершу вони вирізалися з цілого кадру
+    # разом із клаптем тамтешньої трави — і виходили напівпрозорі мазки зі
+    # світлим прямокутником навколо. Для смуги фону вирізка з кадру правильна,
+    # для предмета, що стоїть на землі, — ні: йому потрібне рівне тло, з якого
+    # він знімається начисто (tools/key_flat.py).
+    "plyn-hut": {
+        "subject": (
+            "one small old log cabin with a steep thatched roof, "
+            "weathered grey timber walls, low doorway, one tiny window, "
+            "the whole building from ground to ridge, seen from high above "
+            "at a three quarter angle, standing alone on a plain flat mid grey "
+            "background"
+        ),
+        "world": "plyn",
+        "light": "object",
+        "size": (576, 512),
+        "cfg": 6.5,
+        "steps": 30,
+        "extra_negative": (
+            "village, other buildings, trees, fence, road, sky, horizon, "
+            "grass field, landscape, snow, stone castle, brick"
+        ),
+    },
+    "plyn-barn": {
+        "subject": (
+            "one long low wooden barn with a shingled roof and wide plank doors, "
+            "dark weathered timber, the whole building from ground to ridge, "
+            "seen from high above at a three quarter angle, "
+            "standing alone on a plain flat mid grey background"
+        ),
+        "world": "plyn",
+        "light": "object",
+        "size": (640, 448),
+        "cfg": 6.5,
+        "steps": 30,
+        "extra_negative": (
+            "village, other buildings, trees, fence, road, sky, horizon, "
+            "grass field, landscape, snow, brick, modern"
+        ),
+    },
     # Каплиця Тихої Балки. Єдина будівля села, якої немає на затвердженому
     # кадрі, тому її доводиться генерувати, а не вирізати. Режим «object»:
     # її світитиме рушій, і на самій картинці тіней бути не повинно.

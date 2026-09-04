@@ -62,6 +62,9 @@ class Prop extends RefCounted:
 	## Через це можна малювати село й не переробляти фізику.
 	var texture: Texture2D = null
 	var tex_scale: float = 1.0
+	## Наскільки густа тінь під ним. У хати вона щільна, у паркана майже
+	## немає — крізь паркан видно землю, і суцільна пляма під ним бреше.
+	var shadow: float = 1.0
 
 	func _init(
 		p_pos: Vector3, p_size: Vector2, p_height: float, p_tint: float,
@@ -223,8 +226,11 @@ var _ground_texture: Texture2D = null
 ## чогось, і поки її немає, будинки лишаються розкиданими по полю.
 var _road_texture: Texture2D = null
 var _paths: Array[PackedVector2Array] = []
-const PATH_WIDTH: float = 165.0
-const PATH_TINT := Color(1.62, 1.52, 1.30)
+const PATH_WIDTH: float = 118.0
+## Стежка мусить відрізнятися від трави не лише яскравістю, а й КОЛЬОРОМ:
+## витоптана земля восени тепла й бура, трава — холодна й зелена. Різниця
+## тільки у світлі губиться на будь-якому тлі.
+const PATH_TINT := Color(1.16, 0.98, 0.74)
 
 ## Уступ — це шматок тієї самої кам'яної підлоги, піднятий над землею.
 ## Тому окремої текстури не малюємо: беремо ту, що вже є.
@@ -314,6 +320,12 @@ func _load_world(mode: WorldMode.Mode) -> void:
 	_plates.clear()
 	_enemies.clear()
 	_backdrops.clear()
+	# Стежки скидаються ТУТ, до побудови світу, а не після неї. Раніше
+	# скидання стояло нижче — і щоразу стирало те, що щойно наставив
+	# _build_plyn. Через це стежок не було ЖОДНОГО разу, а те, що я приймав
+	# за них на знімках, було просто плямами трави.
+	_road_texture = null
+	_paths.clear()
 
 	var spawn: Vector3 = Vector3.ZERO
 	match mode:
@@ -341,8 +353,6 @@ func _load_world(mode: WorldMode.Mode) -> void:
 	_ledge_texture = _floor_texture
 	# Земля Плині — намальована трава, а не заливка кольором. У Висі землі
 	# немає взагалі: там карта, і плита має лишатися умовною.
-	_road_texture = null
-	_paths.clear()
 	_ground_texture = load("res://art/plyn/ground.png") as Texture2D \
 		if mode == WorldMode.Mode.PLYN else null
 
@@ -375,11 +385,21 @@ func _build_plyn() -> Vector3:
 	# важив стільки ж, скільки «вбік».
 	_plates.append(Rect2(-1700.0, -1250.0, 3400.0, 2500.0))
 
+	# Хати — окремо згенеровані будівлі, а не вирізки з кадру. Вирізка з
+	# картини тягла за собою клапоть чужої трави, і хата виходила напівпрозорим
+	# мазком у світлому прямокутнику. Тепер це п'ять РІЗНИХ зрубів, знятих на
+	# рівному тлі й знятих із нього начисто.
 	var hatas: Array[Texture2D] = []
-	for name: String in ["hata_a", "hata_b", "hata_c", "hata_d", "hata_e"]:
+	for name: String in ["hut_1", "hut_2", "hut_3", "hut_4", "hut_5"]:
 		var tex: Texture2D = load("res://art/plyn/%s.png" % name) as Texture2D
 		if tex != null:
 			hatas.append(tex)
+
+	var barns: Array[Texture2D] = []
+	for name: String in ["barn_1", "barn_2", "barn_3"]:
+		var btex: Texture2D = load("res://art/plyn/%s.png" % name) as Texture2D
+		if btex != null:
+			barns.append(btex)
 
 	# --- стежки ---------------------------------------------------------------
 	# Головна тягнеться з півдня, від входу в село, до каплиці на півночі.
@@ -429,7 +449,7 @@ func _build_plyn() -> Vector3:
 		Vector4(-560.0, 640.0, 470.0, 0.0),    # хата батьків — найбільша
 		Vector4(-700.0, -260.0, 420.0, 3.0),   # староста
 		Vector4(760.0, -260.0, 400.0, 1.0),    # кузня
-		Vector4(1010.0, -20.0, 360.0, 4.0),    # комора
+		Vector4(1010.0, -20.0, 360.0, 3.0),    # комора
 		Vector4(-1000.0, 130.0, 390.0, 2.0),
 		Vector4(-1060.0, 560.0, 370.0, 4.0),
 		Vector4(-230.0, -280.0, 380.0, 1.0),
@@ -451,6 +471,19 @@ func _build_plyn() -> Vector3:
 		_props.append(_sprite_prop(
 			Vector3(home.x, home.y, 0.0), home.z,
 			hatas[int(home.w) % hatas.size()], true
+		))
+
+	# Стодоли й хліви. Село не з самих хат: комора, повітка й кузня мають
+	# інший силует, і саме різниця силуетів дає карті читабельність.
+	for spot: Vector3 in [
+		Vector3(1120.0, 250.0, 520.0), Vector3(-1150.0, 720.0, 480.0),
+		Vector3(520.0, -560.0, 460.0), Vector3(-480.0, 980.0, 500.0),
+	]:
+		if barns.is_empty():
+			break
+		_props.append(_sprite_prop(
+			Vector3(spot.x, spot.y, 0.0), spot.z,
+			barns[int(absf(spot.x)) % barns.size()], true
 		))
 
 	# Криниця на перехресті. Центр села — це те місце, де стежки сходяться.
@@ -481,7 +514,7 @@ func _build_plyn() -> Vector3:
 		var line: Vector3 = fence_line[i]
 		var fence := _sprite_prop(
 			Vector3(line.x, line.y, 0.0), line.z,
-			fences[i % fences.size()] if not fences.is_empty() else null, false
+			fences[i % fences.size()] if not fences.is_empty() else null, false, 0.22
 		)
 		_props.append(fence)
 
@@ -539,7 +572,7 @@ func _build_plyn() -> Vector3:
 				continue
 			_props.append(_sprite_prop(
 				pos, rng.randf_range(150.0, 260.0),
-				bushes[rng.randi() % bushes.size()], false
+				bushes[rng.randi() % bushes.size()], false, 0.45
 			))
 
 	# Селяни. Поки ти живий — вони ходять.
@@ -1089,7 +1122,11 @@ func _draw() -> void:
 	for i: int in _enemies.size():
 		order.append(Vector3(_enemies[i].pos.y, float(KIND_ENEMY), float(i)))
 	order.append(Vector3(_mover.position.y, float(KIND_PLAYER), 0.0))
-	order.sort_custom(func(a: Vector3, b: Vector3) -> bool: return a.x > b.x)
+	# Спершу ДАЛЕКЕ, потім ближче. Було навпаки, і в рідкому селі це не
+	# впадало в око, бо ніщо ні на що не налазило. Щойно двори стали тісно,
+	# дальні хати почали замальовувати ближні — класичний зламаний
+	# алгоритм маляра. Менший y — далі від глядача, тож він і йде першим.
+	order.sort_custom(func(a: Vector3, b: Vector3) -> bool: return a.x < b.x)
 
 	for entry: Vector3 in order:
 		match int(entry.y):
@@ -1114,26 +1151,43 @@ func _draw_prop_sprite(prop: Prop, fade: float) -> void:
 	var k: float = prop.tex_scale * _perspective(prop.pos.y)
 	var tw: float = float(prop.texture.get_width()) * k
 	var th: float = float(prop.texture.get_height()) * k
-	# Клапоть трави знизу вирізки — це і є дотик до землі, тому низ
+
+	_draw_ground_shadow(foot, tw * 0.34, (1.0 - fade) * prop.shadow)
+
+	# Клапоть ґрунту знизу вирізки — це і є дотик до землі, тому низ
 	# спрайта опускається трохи нижче за точку основи.
 	var rect := Rect2(foot - Vector2(tw * 0.5, th * 0.88), Vector2(tw, th))
-	# Легке притемнення в бік землі. Вирізка тягне за собою клапоть трави з
-	# кадру, а та трава світліша за нашу — і без поправки навколо кожної хати
-	# стоїть блідий прямокутник.
+	# Легке притемнення в бік землі: генерація дає предмети трохи світлішими
+	# за нашу траву, і без поправки вони читаються наліпками.
 	draw_texture_rect(
-		prop.texture, rect, false, Color(0.90, 0.92, 0.88, 1.0 - fade)
+		prop.texture, rect, false, Color(0.94, 0.95, 0.92, 1.0 - fade)
 	)
 
 
-## Пропс, який малюється картинкою. Коробка зіткнення виводиться з ширини
-## спрайта, а не задається окремо: інакше вона рано чи пізно розійдеться з
-## картинкою, і гравець упиратиметься в порожнє місце.
+## Тінь на землі. Найважливіша річ у всьому цьому файлі для відчуття обʼєму:
+## без неї предмет не стоїть, а висить, і скільки не малюй гарних хат, вони
+## лишаються наліпками на траві. Саме тінь робить із 2D 2.5D.
+##
+## Малюється кількома еліпсами з різною прозорістю, а не одним: різкий край
+## одразу читається як намальований кружечок.
+func _draw_ground_shadow(foot: Vector2, radius: float, strength: float) -> void:
+	if strength <= 0.01 or radius < 2.0:
+		return
+	draw_set_transform(foot, 0.0, Vector2(1.0, 0.30))
+	for i: int in range(4):
+		var k: float = 1.0 - float(i) * 0.21
+		draw_circle(
+			Vector2.ZERO, radius * k, Color(0.05, 0.06, 0.05, 0.10 * strength)
+		)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 func _sprite_prop(
-	pos: Vector3, width: float, tex: Texture2D, solid: bool
+	pos: Vector3, width: float, tex: Texture2D, solid: bool,
+	shadow: float = 1.0
 ) -> Prop:
 	var prop := Prop.new(
 		pos, Vector2(width * 0.40, width * 0.26), width * 0.38, 0.5, solid
 	)
+	prop.shadow = shadow
 	if tex != null:
 		prop.texture = tex
 		prop.tex_scale = width / float(tex.get_width())
