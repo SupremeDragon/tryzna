@@ -199,6 +199,36 @@ JOBS: dict[str, dict] = {
             "foreground grass, field in front, water, reflection, birds"
         ),
     },
+    # Дрібнота Плині: дерева, кущі, каміння. Тут та сама «помилка», через яку
+    # завалився шар фону, працює НА КОРИСТЬ: слова «isolated on a plain flat
+    # background» дають каталог окремих предметів на рівному тлі — і саме це
+    # потрібно пропсам, які потім вирізаються в прозорість.
+    "plyn-tree": {
+        "subject": (
+            "one bare autumn birch tree, slender white trunk, thin dark branches, "
+            "almost no leaves, whole tree from root to top, seen from slightly above, "
+            "standing alone on a plain flat mid grey background"
+        ),
+        "world": "plyn",
+        "light": "object",
+        "size": (448, 704),
+        "cfg": 6.5,
+        "steps": 30,
+        "extra_negative": "forest, many trees, sky, horizon, buildings, path, snow",
+    },
+    "plyn-bush": {
+        "subject": (
+            "one low dry autumn shrub with a few grey rocks at its base, "
+            "small clump of dead grass, seen from slightly above, "
+            "standing alone on a plain flat mid grey background"
+        ),
+        "world": "plyn",
+        "light": "object",
+        "size": (512, 384),
+        "cfg": 6.5,
+        "steps": 28,
+        "extra_negative": "tree, forest, flowers, sky, horizon, buildings, path",
+    },
     # Каплиця Тихої Балки. Єдина будівля села, якої немає на затвердженому
     # кадрі, тому її доводиться генерувати, а не вирізати. Режим «object»:
     # її світитиме рушій, і на самій картинці тіней бути не повинно.
