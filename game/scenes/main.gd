@@ -249,6 +249,15 @@ var _dirt_texture: Texture2D = null
 ## сходинками: заокруглення в атласі не рятує, коли сама клітинка завелика.
 const TILE: float = 130.0
 
+## ОДНА МІРКА НА ВСЕ. Порада з довідника Unity по 2D, і вона тут доречна:
+## спершу задай базові розміри, тримай їх однаковими по всій грі, а якщо є
+## тайлмап — хай клітинка дорівнює одиниці. Доти розміри хат стояли довільними
+## числами «на око», і саме тому масштаб села не читався.
+##
+## Тепер одиниця — це TILE. Хата три клітинки завширшки, стодола чотири,
+## каплиця три з половиною, дерево дві. Людина трохи більша за клітинку.
+const UNIT: float = TILE
+
 const TERRAIN_GRASS: int = 0
 const TERRAIN_DIRT: int = 1
 const TERRAIN_FIELD: int = 2
@@ -466,28 +475,28 @@ func _build_plyn() -> Vector3:
 	# --- двори ----------------------------------------------------------------
 	# x, глибина, ширина будівлі, тип: 0 — хата, 1 — стодола, 2 — каплиця
 	var plots: Array[Vector4] = [
-		Vector4(-140.0, -1060.0, 430.0, 2.0),
-		Vector4(-560.0, 640.0, 470.0, 0.0),
-		Vector4(-700.0, -280.0, 420.0, 0.0),
-		Vector4(780.0, -280.0, 400.0, 0.0),
-		Vector4(1080.0, 240.0, 520.0, 1.0),
-		Vector4(-1120.0, 700.0, 480.0, 1.0),
-		Vector4(520.0, -600.0, 460.0, 1.0),
-		Vector4(-460.0, 980.0, 500.0, 1.0),
-		Vector4(-1020.0, 120.0, 390.0, 0.0),
-		Vector4(-1080.0, 560.0, 370.0, 0.0),
-		Vector4(-240.0, -300.0, 380.0, 0.0),
-		Vector4(300.0, -430.0, 360.0, 0.0),
-		Vector4(980.0, 500.0, 400.0, 0.0),
-		Vector4(620.0, 820.0, 410.0, 0.0),
-		Vector4(-840.0, 920.0, 380.0, 0.0),
-		Vector4(1180.0, -520.0, 350.0, 0.0),
-		Vector4(-320.0, 380.0, 350.0, 0.0),
-		Vector4(430.0, 150.0, 340.0, 0.0),
-		Vector4(-1180.0, -240.0, 350.0, 0.0),
-		Vector4(1340.0, 780.0, 370.0, 0.0),
-		Vector4(-200.0, 1040.0, 380.0, 0.0),
-		Vector4(280.0, 1090.0, 360.0, 0.0),
+		Vector4(-140.0, -1060.0, UNIT * 3.4, 2.0),   # каплиця
+		Vector4(-560.0, 640.0, UNIT * 3.2, 0.0),     # хата батьків — найбільша
+		Vector4(-700.0, -280.0, UNIT * 3.0, 0.0),    # староста
+		Vector4(780.0, -280.0, UNIT * 3.0, 0.0),     # кузня
+		Vector4(1080.0, 240.0, UNIT * 4.0, 1.0),     # комора
+		Vector4(-1120.0, 700.0, UNIT * 4.0, 1.0),
+		Vector4(520.0, -600.0, UNIT * 3.8, 1.0),
+		Vector4(-460.0, 980.0, UNIT * 4.0, 1.0),
+		Vector4(-1020.0, 120.0, UNIT * 2.8, 0.0),
+		Vector4(-1080.0, 560.0, UNIT * 2.8, 0.0),
+		Vector4(-240.0, -300.0, UNIT * 2.8, 0.0),
+		Vector4(300.0, -430.0, UNIT * 2.8, 0.0),
+		Vector4(980.0, 500.0, UNIT * 3.0, 0.0),
+		Vector4(620.0, 820.0, UNIT * 3.0, 0.0),
+		Vector4(-840.0, 920.0, UNIT * 2.8, 0.0),
+		Vector4(1180.0, -520.0, UNIT * 2.8, 0.0),
+		Vector4(-320.0, 380.0, UNIT * 2.8, 0.0),
+		Vector4(430.0, 150.0, UNIT * 2.6, 0.0),
+		Vector4(-1180.0, -240.0, UNIT * 2.6, 0.0),
+		Vector4(1340.0, 780.0, UNIT * 2.8, 0.0),
+		Vector4(-200.0, 1040.0, UNIT * 2.8, 0.0),
+		Vector4(280.0, 1090.0, UNIT * 2.6, 0.0),
 	]
 	for plot: Vector4 in plots:
 		_yards.append(Rect2(
@@ -552,7 +561,7 @@ func _build_plyn() -> Vector3:
 				if _in_yard(pos, 30.0) or _on_path(pos, 150.0):
 					continue
 				_props.append(_sprite_prop(
-					pos, rng.randf_range(230.0, 340.0),
+					pos, UNIT * rng.randf_range(1.7, 2.4),
 					trees[rng.randi() % trees.size()], true
 				))
 
@@ -563,7 +572,7 @@ func _build_plyn() -> Vector3:
 			if _in_yard(pos, 60.0) or _on_path(pos, 150.0) or _too_close(pos, 300.0):
 				continue
 			_props.append(_sprite_prop(
-				pos, rng.randf_range(240.0, 310.0),
+				pos, UNIT * rng.randf_range(1.8, 2.3),
 				trees[rng.randi() % trees.size()], true
 			))
 
@@ -581,7 +590,7 @@ func _build_plyn() -> Vector3:
 			if _in_yard(pos, 20.0) or _on_path(pos, 105.0) or _too_close(pos, 190.0):
 				continue
 			_props.append(_sprite_prop(
-				pos, rng.randf_range(150.0, 250.0),
+				pos, UNIT * rng.randf_range(0.9, 1.4),
 				bushes[rng.randi() % bushes.size()], false, 0.45
 			))
 
@@ -1147,7 +1156,12 @@ func _draw() -> void:
 ## інакше хати попливуть відносно тіней і одна одної.
 func _draw_prop_sprite(prop: Prop, fade: float) -> void:
 	var foot: Vector2 = Projector.project(prop.pos)
-	var k: float = prop.tex_scale * _perspective(prop.pos.y)
+	# БЕЗ поправки на глибину. Раніше тут стояло множення на _perspective(),
+	# і це була помилка: наша проєкція паралельна, а в паралельній проєкції
+	# предмети НЕ меншають із відстанню — саме тому в таких іграх асети й не
+	# треба малювати в різних розмірах. Через ту поправку та сама хата була
+	# всюди різна, і масштаб села не читався.
+	var k: float = prop.tex_scale
 	var tw: float = float(prop.texture.get_width()) * k
 	var th: float = float(prop.texture.get_height()) * k
 
@@ -1297,18 +1311,6 @@ func _too_close(pos: Vector3, gap: float) -> bool:
 	return false
 
 
-## Наскільки менша річ, що стоїть глибше. Проєктор зсуває глибину по
-## вертикалі, але НЕ зменшує — тож без цієї поправки хата біля обрію
-## виходить така сама завбільшки, як хата під носом, і вся глибина,
-## яку дає паралакс, розсипається на першому ж будинку.
-func _perspective(depth: float) -> float:
-	if _plates.is_empty():
-		return 1.0
-	var plate: Rect2 = _plates[0]
-	var k: float = clampf(
-		inverse_lerp(plate.position.y, plate.end.y, depth), 0.0, 1.0
-	)
-	return lerpf(0.66, 1.22, k)
 ## Витоптана земля довкола дворів. Робить одразу дві речі: показує, де чия
 ## територія, і розбиває суцільну зелень, від якої карта здавалася килимом.
 func _draw_dirt() -> void:
