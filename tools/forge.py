@@ -127,6 +127,60 @@ JOBS: dict[str, dict] = {
         # дві помилки — лаву й відкрите небо, решту витягне тонування в рушії.
         "extra_negative": "lava river, molten liquid, volcano, open sky, animal, face",
     },
+    # Колонада Ниці. Перша спроба провалилася повчально: слова
+    # «isolated on a plain flat background» дали КАТАЛОГ ТОВАРІВ — коротенькі
+    # тумби з тінями на підлозі, кожна окремо посеред кадру. Для шару фону
+    # треба протилежне: колони, обрізані рамкою згори й знизу, і темрява
+    # між ними. Тло тут не світле, а чорне — і вирізається саме воно.
+    "nyts-pillars": {
+        "subject": (
+            "massive rough stone columns filling the whole image from top to bottom, "
+            "cropped by the frame above and below, only the middle of the shafts, "
+            "worn dark grey rock, standing far apart with wide gaps, "
+            "pure black empty darkness between and behind the columns, "
+            "nothing else in the image, no floor, no ceiling"
+        ),
+        "world": "nyts",
+        "light": "backdrop",
+        "size": (1024, 448),
+        "cfg": 6.5,
+        "steps": 30,
+        "extra_negative": (
+            "full column, capital, base, pedestal, statue, ornament, "
+            "greek temple, marble, cast shadow, floor, ground, product photo, "
+            "row of objects, small objects, arch, perspective, vanishing point"
+        ),
+    },
+    # ПЛИНЬ. Світ смертних, і саме в ньому відбувається весь Акт I — а фон
+    # там досі процедурні смуги. Найдальший шар: пагорби Тихої Балки.
+    "plyn-hills": {
+        "subject": (
+            "distant rolling hills on the horizon, soft wooded slopes far away, "
+            "layered ridges fading into haze, damp overcast autumn, "
+            "no buildings, no people, empty land, "
+            "wide horizontal composition, image fills the entire frame"
+        ),
+        "world": "plyn",
+        "light": "backdrop",
+        "size": (1024, 384),
+        "cfg": 6.0,
+        "steps": 30,
+        "extra_negative": "mountains, snow, sunset, dramatic clouds, road, fence",
+    },
+    # Ближчий шар Плині: смуга лісу. Ріжеться в прозорість, тому тло рівне.
+    "plyn-trees": {
+        "subject": (
+            "a band of bare autumn trees seen from a distance, "
+            "thin dark trunks and sparse branches, a treeline, "
+            "isolated on a plain flat pale background"
+        ),
+        "world": "plyn",
+        "light": "object",
+        "size": (1024, 384),
+        "cfg": 6.5,
+        "steps": 30,
+        "extra_negative": "ground, grass, sky gradient, sun, path, single tree",
+    },
 }
 
 

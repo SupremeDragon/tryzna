@@ -442,17 +442,19 @@ func _build_nyts() -> Vector3:
 	var near_tex: Texture2D = load("res://art/nyts/pillars_near.png") as Texture2D
 	var front_tex: Texture2D = load("res://art/nyts/pillars_front.png") as Texture2D
 
+	# Шари намальовані вже темними й із власним серпанком, тому тінт майже
+	# не гасить — гасить відстань: далекий сильніше, ближній майже ні.
 	if far_tex != null:
 		_backdrops.append(Backdrop.textured(
-			0.14, far_tex, 0.52, Color(0.38, 0.38, 0.43), 168.0, 24.0, 0.0
+			0.14, far_tex, 0.62, Color(0.52, 0.52, 0.58), 176.0, 26.0, 0.0
 		))
 	if mid_tex != null:
 		_backdrops.append(Backdrop.textured(
-			0.34, mid_tex, 0.86, Color(0.66, 0.66, 0.71), 74.0, 32.0, 2.1
+			0.34, mid_tex, 0.92, Color(0.74, 0.73, 0.78), 88.0, 30.0, 2.1
 		))
 	if near_tex != null:
 		_backdrops.append(Backdrop.textured(
-			0.60, near_tex, 0.55, Color(0.96, 0.96, 1.0), 0.0, 18.0, 4.4
+			0.60, near_tex, 1.35, Color(0.94, 0.93, 0.96), 8.0, 16.0, 4.4
 		))
 	if front_tex != null:
 		# Передній план заходить нижче підлоги — він же перед нею.
@@ -460,7 +462,7 @@ func _build_nyts() -> Vector3:
 		# той стояв на місці. У русі це читалося б як глибина, а стоячи —
 		# як загублений персонаж. Прозорість лишає і те, і те.
 		_backdrops.append(Backdrop.textured(
-			1.50, front_tex, 1.55, Color(0.16, 0.16, 0.19, 0.78), -140.0
+			1.50, front_tex, 1.05, Color(0.20, 0.20, 0.24, 0.72), -160.0
 		))
 
 	# Ґрат-декорацій тут більше немає: їхню роботу перебрали намальовані
