@@ -370,16 +370,21 @@ func _build_nyts() -> Vector3:
 	# менший, вищий над підлогою й темніший. Підйом над лінією підлоги — це
 	# підроблений горизонт: у площинному світі глибини немає, і без нього всі
 	# стовпи стояли б на одній лінії, наче в один ряд.
-	var row_tex: Texture2D = load("res://art/nyts/pillars_row.png") as Texture2D
+	# Далекий і середній ряди беруть ОКРЕМІ файли, а не той самий. Різниця
+	# між ними мізерна (варіації відрізняються на відсоток), зате зсунуті
+	# краї стовпів не дають шарам збігтися в муар при різних масштабах.
+	var far_tex: Texture2D = load("res://art/nyts/pillars_far.png") as Texture2D
+	var mid_tex: Texture2D = load("res://art/nyts/pillars_mid.png") as Texture2D
 	var near_tex: Texture2D = load("res://art/nyts/pillars_near.png") as Texture2D
 	var front_tex: Texture2D = load("res://art/nyts/pillars_front.png") as Texture2D
 
-	if row_tex != null:
+	if far_tex != null:
 		_backdrops.append(Backdrop.textured(
-			0.14, row_tex, 0.42, Color(0.40, 0.40, 0.45), 165.0, 26.0, 0.0
+			0.14, far_tex, 0.52, Color(0.38, 0.38, 0.43), 168.0, 24.0, 0.0
 		))
+	if mid_tex != null:
 		_backdrops.append(Backdrop.textured(
-			0.34, row_tex, 0.70, Color(0.68, 0.68, 0.73), 72.0, 34.0, 2.1
+			0.34, mid_tex, 0.86, Color(0.66, 0.66, 0.71), 74.0, 32.0, 2.1
 		))
 	if near_tex != null:
 		_backdrops.append(Backdrop.textured(
@@ -387,8 +392,11 @@ func _build_nyts() -> Vector3:
 		))
 	if front_tex != null:
 		# Передній план заходить нижче підлоги — він же перед нею.
+		# І він НАПІВПРОЗОРИЙ: суцільний стовп накривав гравця цілком, коли
+		# той стояв на місці. У русі це читалося б як глибина, а стоячи —
+		# як загублений персонаж. Прозорість лишає і те, і те.
 		_backdrops.append(Backdrop.textured(
-			1.50, front_tex, 2.10, Color(0.16, 0.16, 0.19), -140.0
+			1.50, front_tex, 1.55, Color(0.16, 0.16, 0.19, 0.78), -140.0
 		))
 
 	# Ґрат-декорацій тут більше немає: їхню роботу перебрали намальовані

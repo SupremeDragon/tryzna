@@ -81,10 +81,13 @@ def coverage_of(rgba):
 # (файл-джерело, назва шару, чи зберігати відрізану підлогу)
 JOBS = [
     ("nyts_src_row.png", "pillars_row", False),
+    ("nyts_src_far.png", "pillars_far", False),
+    ("nyts_src_mid.png", "pillars_mid", False),
     ("nyts_src_front.png", "pillars_front", False),
     ("nyts_src_pillars_near.jpg", "pillars_near", True),
     ("nyts_floor_v01.jpg", "floor_wide", False),
-    ("nyts_l1_glow_v01.jpg", "glow", False),
+    # Заграву більше не ріжемо з генерації: вона малюється кодом,
+    # див. tools/make_glow.py. Мазок у джерелі світла тільки шкодив.
 ]
 
 
@@ -113,8 +116,13 @@ def main():
         if name == "pillars_front":
             # У джерелі стовпи стоять по ОБОХ краях. При повторенні вони
             # сходяться парою на кожному стику й перекривають пів екрана.
-            # Лишаємо один стовп із запасом порожнечі праворуч.
-            pillars = pillars.crop((0, 0, int(pillars.width * 0.62), pillars.height))
+            # Лишаємо один стовп, а тоді доклеюємо порожнечі: за правилом
+            # щільності передній план має займати 10-15% кадру, інакше він
+            # закриває гравця, а не додає глибини.
+            pillars = pillars.crop((0, 0, int(pillars.width * 0.42), pillars.height))
+            padded = Image.new("RGBA", (int(pillars.width * 2.8), pillars.height))
+            padded.paste(pillars, (0, 0))
+            pillars = padded
         pillars.save(os.path.join(OUT, name + ".png"))
         print("%-14s тло=%s  %dx%d  заповнення=%.0f%%" % (
             name, bg, pillars.width, pillars.height, coverage_of(pillars) * 100
