@@ -51,7 +51,7 @@ const ZOOM_FOR: Dictionary = {
 ## Палітри трьох світів. Див. docs/01-світ-і-лор.md, розділ 5.
 const SKY_FOR: Dictionary = {
 	Mode.VYS: Color("1b1a24"),
-	Mode.PLYN: Color("2e3630"),
+	Mode.PLYN: Color("6cb038"),
 	Mode.NYTS: Color("0d0e10"),
 }
 

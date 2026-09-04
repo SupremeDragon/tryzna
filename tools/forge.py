@@ -65,7 +65,30 @@ NEGATIVE = (
     "canvas edge, framed picture, vignette, torn paper"
 )
 
+# --- ДРУГИЙ СТИЛЬ: «ЯСНИЙ» ----------------------------------------------------
+# Міша показав референс і сказав прямо, що наш приглушений осінній стиль йому
+# не подобається, а цей — подобається. Це його гра, тож Плинь переходить на
+# нього. Старий замок нікуди не дівається: Ниць і Висі лишаються на ньому,
+# і саме тому стиль тут ПАРАМЕТР, а не заміна.
+BRIGHT_TAIL = (
+    "vibrant stylized top down game art, cozy fantasy village, "
+    "clean bold shapes, soft cel shading, saturated cheerful colours, "
+    "crisp readable silhouette, warm sunlight, high contrast"
+)
+
+BRIGHT_NEGATIVE = (
+    "photorealistic, photo, realistic texture, muted, desaturated, grim, dark, "
+    "gloomy, fog, haze, blurry, noisy, grainy, 3D render, sketch, "
+    "text, letters, watermark, signature, "
+    "person, people, human figure, man, woman, character, "
+    "white border, paper texture, unpainted margin, canvas edge, vignette"
+)
+
 PALETTE = {
+    "bright": (
+        "lush saturated green grass, warm sandy paths, "
+        "rich brown timber and terracotta roofs, clear blue water"
+    ),
     "plyn": (
         "muted earth palette: moss green, ochre, weathered grey stone, "
         "faded warm timber; damp autumn, lived-in, quiet"
@@ -92,13 +115,34 @@ LIGHT = {
 }
 
 
-def compose(subject: str, world: str, light: str) -> str:
+# Хвіст для ОКРЕМИХ ПРЕДМЕТІВ. Теж окремий, і з тієї ж причини: слово «село»
+# у хвості сцен змушує модель домальовувати навколо предмета ціле поселення.
+# Просив одне дерево — діставав ізометричну діораму з хатами.
+PROP_TAIL = (
+    "single game asset, one object only, clean cel shaded cartoon style, "
+    "saturated colours, crisp readable silhouette, even lighting, "
+    "isolated on an empty flat background, no scene, no landscape"
+)
+
+# Хвіст для ПЛИТОК. Окремий від хвоста сцен навмисно: слова «затишне село»
+# змушують модель малювати краєвид, а плитці потрібне протилежне — рівна
+# поверхня без глибини, без тіней і без композиції.
+TILE_TAIL = (
+    "flat seamless game texture, top down orthographic, clean cel shading, "
+    "saturated colours, even lighting, no shadows, no depth, no composition, "
+    "fills the entire square uniformly"
+)
+
+
+def compose(subject: str, world: str, light: str, tail: str = "") -> str:
     """Складає проміт за §5 замка: спершу зміст, потім стиль.
 
     Порядок не косметичний: генератор важить перші слова більше за останні,
     тому зміст мусить іти першим, інакше вийде красивий стиль ні про що.
     """
-    return ", ".join([subject, PALETTE[world], LIGHT[light], STYLE_TAIL])
+    if tail == "":
+        tail = BRIGHT_TAIL if world == "bright" else STYLE_TAIL
+    return ", ".join([subject, PALETTE[world], LIGHT[light], tail])
 
 
 # --- Замовлення --------------------------------------------------------------
@@ -269,6 +313,110 @@ JOBS: dict[str, dict] = {
             "grass field, landscape, snow, brick, modern"
         ),
     },
+    # --- НАБІР У ЯСНОМУ СТИЛІ (референс Міші) ---------------------------------
+    # Ціла карта згори. Модель добре малює СЦЕНУ й погано — текстуру, тож
+    # замість боротьби з нею беремо те, що вона вміє, і розбираємо на частини:
+    # плитки трави й піску, дерева, хати, грядки. Заразом усе виходить з
+    # одного кадру, а отже в одному освітленні й одній палітрі.
+    "b-scene": {
+        "subject": (
+            "top down view of a small fantasy village map, bright green lawns, "
+            "winding pale sandy paths crossing the map, round leafy trees and "
+            "dark conifers, small houses with red tiled roofs, tilled vegetable "
+            "garden plots, wooden fences, a blue stream with a small wooden "
+            "bridge, camera directly overhead looking straight down"
+        ),
+        "world": "bright", "light": "backdrop", "size": (768, 512),
+        "cfg": 7.0, "steps": 32,
+        "extra_negative": "horizon, sky, clouds, side view, mountains, sea",
+    },
+    "b-grass": {
+        "tail": TILE_TAIL,
+        "subject": (
+            "flat lawn of bright green grass filling the entire image, "
+            "tiny scattered white daisies, cartoon game ground texture, "
+            "camera straight overhead, no horizon, no objects, no path"
+        ),
+        "world": "bright", "light": "backdrop", "size": (512, 512),
+        "cfg": 6.5, "steps": 28,
+        "extra_negative": "horizon, sky, tree, building, path, road, water",
+    },
+    "b-path": {
+        "tail": TILE_TAIL,
+        "subject": (
+            "flat pale sandy dirt ground filling the entire image, "
+            "warm cream coloured packed sand with tiny pebbles, "
+            "cartoon game ground texture, camera straight overhead, "
+            "no horizon, no objects, no grass"
+        ),
+        "world": "bright", "light": "backdrop", "size": (512, 512),
+        "cfg": 6.5, "steps": 28,
+        "extra_negative": "horizon, sky, tree, building, grass, water, road edges",
+    },
+    "b-soil": {
+        "tail": TILE_TAIL,
+        "subject": (
+            "flat vegetable garden bed filling the entire image, dark brown "
+            "tilled soil in neat rows with small red and green plants, "
+            "cartoon game ground texture, camera straight overhead, no horizon"
+        ),
+        "world": "bright", "light": "backdrop", "size": (512, 512),
+        "cfg": 6.5, "steps": 28,
+        "extra_negative": "horizon, sky, tree, building, fence, path",
+    },
+    "b-water": {
+        "tail": TILE_TAIL,
+        "subject": (
+            "flat clear blue river water filling the entire image, gentle "
+            "ripples and light reflections, cartoon game water texture, "
+            "camera straight overhead, no horizon, no banks, no objects"
+        ),
+        "world": "bright", "light": "backdrop", "size": (512, 512),
+        "cfg": 6.5, "steps": 28,
+        "extra_negative": "horizon, sky, shore, grass, boat, waterfall, foam",
+    },
+    "b-tree": {
+        "tail": PROP_TAIL,
+        "subject": (
+            "one simple small round tree, a single ball of bright green leaves "
+            "on a short straight brown trunk, no roots showing, nothing under "
+            "it, seen from high above at a slight angle, "
+            "standing alone on a plain flat mid grey background"
+        ),
+        "world": "bright", "light": "object", "size": (512, 512),
+        "cfg": 6.5, "steps": 30,
+        "extra_negative": (
+            "forest, many trees, grass, ground, soil, platform, pedestal, "
+            "stone ring, fence, roots, shadow, horizon, sky, autumn, ornate"
+        ),
+    },
+    "b-pine": {
+        "tail": PROP_TAIL,
+        "subject": (
+            "one simple dark green fir tree, a narrow cone of needles with a "
+            "pointed top and a short trunk, nothing under it, seen from high "
+            "above at a slight angle, "
+            "standing alone on a plain flat mid grey background"
+        ),
+        "world": "bright", "light": "object", "size": (448, 640),
+        "cfg": 6.5, "steps": 30,
+        "extra_negative": (
+            "forest, many trees, grass, ground, soil, platform, snow, shadow, "
+            "horizon, sky, clouds, mountains, sand"
+        ),
+    },
+    "b-house": {
+        "tail": PROP_TAIL,
+        "subject": (
+            "one cosy half timbered cottage with a steep terracotta red tiled "
+            "roof, cream plaster walls and dark wooden beams, a small chimney, "
+            "seen from high above at a three quarter angle, whole building, "
+            "standing alone on a plain flat grey background"
+        ),
+        "world": "bright", "light": "object", "size": (576, 512),
+        "cfg": 6.5, "steps": 30,
+        "extra_negative": "village, other buildings, trees, grass, ground, street, horizon",
+    },
     # --- ТАЙЛСЕТ ПЛИНІ -------------------------------------------------------
     # Земля тепер не одна картинка на весь світ, а КЛІТИНКИ. Тайл мусить бути
     # знятий СТРОГО ЗВЕРХУ й без жодної тіні: тінь усередині тайла повторюється
@@ -387,14 +535,18 @@ def generate(
     cfg: float = 6.0,
     seed: int = -1,
     extra_negative: str = "",
+    tail: str = "",
 ) -> list[str]:
-    prompt = compose(subject, world, light)
+    prompt = compose(subject, world, light, tail)
     print("проміт:\n  " + prompt.replace(", ", ",\n  "))
     print()
 
     payload = {
         "prompt": prompt,
-        "negative_prompt": NEGATIVE + (", " + extra_negative if extra_negative else ""),
+        "negative_prompt": (
+            (BRIGHT_NEGATIVE if world == "bright" else NEGATIVE)
+            + (", " + extra_negative if extra_negative else "")
+        ),
         "width": size[0],
         "height": size[1],
         "steps": steps,
