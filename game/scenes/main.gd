@@ -234,6 +234,8 @@ var _yards: Array[Rect2] = []
 ## яку видно, і головний засіб проти суцільної зелені.
 var _dirt: Array[Vector3] = []
 var _dirt_texture: Texture2D = null
+## Мʼяка пляма під предметом. Спільна на всіх, тому вантажиться раз.
+var _shadow_texture: Texture2D = null
 
 ## --- КАРТА КЛІТИНКАМИ --------------------------------------------------------
 ##
@@ -368,6 +370,7 @@ func _load_world(mode: WorldMode.Mode) -> void:
 	# скидання стояло нижче — і щоразу стирало те, що щойно наставив
 	# _build_plyn. Через це стежок не було ЖОДНОГО разу, а те, що я приймав
 	# за них на знімках, було просто плямами трави.
+	_shadow_texture = load("res://art/plyn/shadow.png") as Texture2D
 	_road_texture = null
 	_dirt_texture = null
 	_terrain.clear()
@@ -518,7 +521,7 @@ func _build_plyn() -> Vector3:
 	_relax_yards(24, 52.0)
 
 	var huts: Array[Texture2D] = []
-	for name: String in ["hut_1", "hut_2", "hut_3"]:
+	for name: String in ["hut_1", "hut_2", "hut_3", "hut_4", "hut_5", "hut_6"]:
 		var tex: Texture2D = load("res://art/plyn/%s.png" % name) as Texture2D
 		if tex != null:
 			huts.append(tex)
@@ -538,7 +541,11 @@ func _build_plyn() -> Vector3:
 
 	# --- дерева ---------------------------------------------------------------
 	var trees: Array[Texture2D] = []
-	for name: String in ["tree_a", "tree_a_m", "tree_b", "tree_b_m", "tree_c", "tree_c_m"]:
+	# Дерева намальовані кодом (tools/make_trees.py). Генерація давала їх або
+	# з темним німбом, або на декоративному постаменті: дерево ЗЕЛЕНЕ, тло теж
+	# зелене, і різати їх одне від одного доводилося на око. А в цьому стилі
+	# крона — просто купка кругів, і код дає чисту прозорість і однаковий силует.
+	for name: String in ["tree_a", "tree_b", "tree_c", "pine_a", "pine_b"]:
 		var ttex: Texture2D = load("res://art/plyn/%s.png" % name) as Texture2D
 		if ttex != null:
 			trees.append(ttex)
@@ -572,6 +579,26 @@ func _build_plyn() -> Vector3:
 			_props.append(_sprite_prop(
 				pos, UNIT * rng.randf_range(1.5, 2.1),
 				trees[rng.randi() % trees.size()], true
+			))
+
+	# Дрібнота між дворами: кущі й пеньки. Саме вона не дає траві читатися
+	# порожнім килимом, а на референсі її повно.
+	var small: Array[Texture2D] = []
+	for name: String in ["bush_a", "bush_b", "stump_a"]:
+		var stex: Texture2D = load("res://art/plyn/%s.png" % name) as Texture2D
+		if stex != null:
+			small.append(stex)
+
+	if not small.is_empty():
+		for i: int in range(90):
+			var pos := Vector3(
+				rng.randf_range(-1900.0, 1900.0), rng.randf_range(-1350.0, 1400.0), 0.0
+			)
+			if _in_yard(pos, 20.0) or _on_path(pos, 110.0) or _too_close(pos, 170.0):
+				continue
+			_props.append(_sprite_prop(
+				pos, UNIT * rng.randf_range(0.55, 0.9),
+				small[rng.randi() % small.size()], false, 0.0
 			))
 
 	# Селяни. Поки ти живий — вони ходять.
@@ -1081,8 +1108,16 @@ func _draw() -> void:
 	# x = ключ сортування, y = тип обʼєкта, z = індекс.
 	_draw_ground_markers(mapn)
 
+	# Відсікання за екраном. Пропсів на карті під три сотні, а в кадрі —
+	# кілька десятків; решта малювалася в нікуди щокадру. Запас навколо
+	# екрана великий навмисно: дерево вище за свою основу, і якщо відсікати
+	# рівно по краю, крони починають зникати раніше за час.
+	var seen: Rect2 = _visible_rect().grow(400.0)
+
 	var order: Array[Vector3] = []
 	for i: int in _props.size():
+		if not seen.has_point(Projector.project(_props[i].pos)):
+			continue
 		order.append(Vector3(_props[i].pos.y, float(KIND_PROP), float(i)))
 	for i: int in _wanderers.size():
 		order.append(Vector3(_wanderers[i].pos.y, float(KIND_WANDERER), float(i)))
@@ -1148,15 +1183,22 @@ func _draw_prop_sprite(prop: Prop, fade: float) -> void:
 ## Малюється кількома еліпсами з різною прозорістю, а не одним: різкий край
 ## одразу читається як намальований кружечок.
 func _draw_ground_shadow(foot: Vector2, radius: float, strength: float) -> void:
-	if strength <= 0.01 or radius < 2.0:
+	if strength <= 0.01 or radius < 2.0 or _shadow_texture == null:
 		return
-	draw_set_transform(foot, 0.0, Vector2(1.0, 0.30))
-	for i: int in range(4):
-		var k: float = 1.0 - float(i) * 0.21
-		draw_circle(
-			Vector2.ZERO, radius * k, Color(0.05, 0.06, 0.05, 0.075 * strength)
-		)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	# ОДНА текстура замість чотирьох кіл із перемиканням матриці.
+	#
+	# Було: draw_set_transform, чотири draw_circle, draw_set_transform назад —
+	# і так на кожен предмет. При двох з половиною сотнях пропсів це тисяча
+	# кіл і п'ятсот змін матриці за кадр, а зміна матриці розриває пакетування,
+	# тобто коштує більше за самі кола.
+	var w: float = radius * 2.0
+	var h: float = w * 0.34
+	draw_texture_rect(
+		_shadow_texture,
+		Rect2(foot - Vector2(radius, h * 0.5), Vector2(w, h)),
+		false, Color(1.0, 1.0, 1.0, strength)
+	)
+
 func _sprite_prop(
 	pos: Vector3, width: float, tex: Texture2D, solid: bool,
 	shadow: float = 1.0
@@ -1339,45 +1381,68 @@ func _grass_at(cell: Vector2i) -> Texture2D:
 	return _grass_tiles[h % _grass_tiles.size()]
 
 
+## Скільки клітинок землі припадає на одну плитку ТРАВИ.
+##
+## Гра гальмувала, і причина була саме тут. Трава малювалася клітинка в
+## клітинку по 130 одиниць, та ще й на прямокутник у півтора рази більший за
+## екран — це під дві тисячі викликів малювання на кадр. Плюс перебирався
+## ВЕСЬ словник ґрунту, а він на кілька тисяч записів.
+##
+## Траві дрібна сітка не потрібна: у ній немає структури, її ніхто не рахує.
+## Дрібна сітка потрібна тільки стежкам. Тому трава йде втричі крупнішою
+## плиткою, а ґрунт перебирається не весь, а лише видимі клітинки.
+const GRASS_SPAN: int = 3
+
 func _draw_terrain() -> void:
-	var view: Rect2 = _visible_rect()
-	# Межі в клітинках. Трава малюється на ВЕСЬ видимий кадр, а не по межах
-	# карти: у поля немає краю, і намальований край одразу читається як коробка.
+	# Справжній видимий прямокутник, а не _visible_rect(): той навмисно в
+	# півтора рази більший, і для землі це втричі більше зайвих плиток.
+	var half: Vector2 = get_viewport_rect().size / _camera.zoom * 0.5
+	var view := Rect2(_camera.position - half, half * 2.0)
+
 	var depth: float = maxf(Projector.depth_scale, 0.001)
+	var grass_w: float = TILE * float(GRASS_SPAN)
+	var grass_h: float = grass_w * depth
+
+	var gx0: int = int(floor(view.position.x / grass_w))
+	var gx1: int = int(ceil(view.end.x / grass_w))
+	var gy0: int = int(floor(view.position.y / grass_h))
+	var gy1: int = int(ceil(view.end.y / grass_h))
+
+	for gy: int in range(gy0, gy1 + 1):
+		for gx: int in range(gx0, gx1 + 1):
+			var cell := Vector2i(gx, gy)
+			draw_texture_rect(
+				_grass_at(cell),
+				Rect2(
+					Vector2(float(gx) * grass_w, float(gy) * grass_h),
+					Vector2(grass_w, grass_h)
+				),
+				false
+			)
+
+	# Ґрунт — тільки по ВИДИМИХ клітинках, із пошуком у словнику. Раніше тут
+	# перебирався весь словник і кожен запис перевірявся на перетин з екраном:
+	# та сама робота, але помножена на розмір карти, а не на розмір вікна.
 	var x0: int = int(floor(view.position.x / TILE)) - 1
 	var x1: int = int(ceil(view.end.x / TILE)) + 1
 	var y0: int = int(floor(view.position.y / (TILE * depth))) - 1
 	var y1: int = int(ceil(view.end.y / (TILE * depth))) + 1
 
-	for cy: int in range(y0, y1):
-		for cx: int in range(x0, x1):
+	for cy: int in range(y0, y1 + 1):
+		for cx: int in range(x0, x1 + 1):
 			var cell := Vector2i(cx, cy)
-			draw_texture_rect(_grass_at(cell), _cell_rect(cell), false)
-
-	# Другим проходом — усе, що лежить поверх трави. Окремим проходом, бо
-	# інакше стежка сусідньої клітинки лягала б під траву наступної.
-	for cell: Vector2i in _terrain:
-		var kind: int = _terrain[cell]
-		if not _terrain_atlas.has(kind):
-			continue
-		var rect: Rect2 = _cell_rect(cell)
-		if not view.intersects(rect):
-			continue
-		var atlas: Texture2D = _terrain_atlas[kind]
-		var n: float = float(atlas.get_width()) * 0.25
-		# Малюємо ОКРУГЛУ ПЛЯМУ, БІЛЬШУ ЗА КЛІТИНКУ, а не підігнану під неї.
-		#
-		# Спершу тут була чесна логіка сусідів: клітинка доростала до краю там,
-		# де поруч така сама земля. Але з'єднання виходило хрестом, і на кутах
-		# між чотирма клітинками лишалися дірки — стежка читалася шахівницею.
-		# Правильно це лікується набором із сорока семи плиток, які знають ще
-		# й діагональних сусідів. Тут дешевше й не гірше: плями просто
-		# перекриваються й зливаються, а кінець стежки заокруглюється сам.
-		draw_texture_rect_region(
-			atlas, rect.grow(TILE * 0.26),
-			Rect2(Vector2.ZERO, Vector2(n, n))
-		)
-
+			var kind: int = _terrain.get(cell, TERRAIN_GRASS)
+			if kind == TERRAIN_GRASS or not _terrain_atlas.has(kind):
+				continue
+			var atlas: Texture2D = _terrain_atlas[kind]
+			var n: float = float(atlas.get_width()) * 0.25
+			# Округла пляма, БІЛЬША за клітинку: сусідні плями зливаються самі,
+			# і стежка виходить суцільною без логіки сусідів. Чесна логіка
+			# з'єднує хрестом і лишає дірки на кутах — див. історію в git.
+			draw_texture_rect_region(
+				atlas, _cell_rect(cell).grow(TILE * 0.26),
+				Rect2(Vector2.ZERO, Vector2(n, n))
+			)
 
 func _tile_texture(
 	tex: Texture2D, area: Rect2, scale: float, tint: Color

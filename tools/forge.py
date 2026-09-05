@@ -118,10 +118,15 @@ LIGHT = {
 # Хвіст для ОКРЕМИХ ПРЕДМЕТІВ. Теж окремий, і з тієї ж причини: слово «село»
 # у хвості сцен змушує модель домальовувати навколо предмета ціле поселення.
 # Просив одне дерево — діставав ізометричну діораму з хатами.
+# Тло — ЯСКРАВО-РОЖЕВЕ, і це не примха. Вирізка знімає те, що схоже кольором
+# на тло; коли тло зелене, разом із ним гине зелене листя й зелені стіни. У
+# першої хати так лишився самий дах. Рожевого в наших предметах немає ніде,
+# тому поріг можна ставити впевнено, а не компромісно.
 PROP_TAIL = (
     "single game asset, one object only, clean cel shaded cartoon style, "
     "saturated colours, crisp readable silhouette, even lighting, "
-    "isolated on an empty flat background, no scene, no landscape"
+    "cut out on a solid flat bright magenta pink background, "
+    "nothing under the object, no ground, no grass, no scene, no landscape"
 )
 
 # Хвіст для ПЛИТОК. Окремий від хвоста сцен навмисно: слова «затишне село»
@@ -251,7 +256,7 @@ JOBS: dict[str, dict] = {
         "subject": (
             "one bare autumn birch tree, slender white trunk, thin dark branches, "
             "almost no leaves, whole tree from root to top, seen from slightly above, "
-            "standing alone on a plain flat mid grey background"
+            "on a solid bright magenta background"
         ),
         "world": "plyn",
         "light": "object",
@@ -264,7 +269,7 @@ JOBS: dict[str, dict] = {
         "subject": (
             "one low dry autumn shrub with a few grey rocks at its base, "
             "small clump of dead grass, seen from slightly above, "
-            "standing alone on a plain flat mid grey background"
+            "on a solid bright magenta background"
         ),
         "world": "plyn",
         "light": "object",
@@ -301,7 +306,7 @@ JOBS: dict[str, dict] = {
             "one long low wooden barn with a shingled roof and wide plank doors, "
             "dark weathered timber, the whole building from ground to ridge, "
             "seen from high above at a three quarter angle, "
-            "standing alone on a plain flat mid grey background"
+            "on a solid bright magenta background"
         ),
         "world": "plyn",
         "light": "object",
@@ -381,7 +386,7 @@ JOBS: dict[str, dict] = {
             "one simple small round tree, a single ball of bright green leaves "
             "on a short straight brown trunk, no roots showing, nothing under "
             "it, seen from high above at a slight angle, "
-            "standing alone on a plain flat mid grey background"
+            "on a solid bright magenta background"
         ),
         "world": "bright", "light": "object", "size": (512, 512),
         "cfg": 6.5, "steps": 30,
@@ -396,7 +401,7 @@ JOBS: dict[str, dict] = {
             "one simple dark green fir tree, a narrow cone of needles with a "
             "pointed top and a short trunk, nothing under it, seen from high "
             "above at a slight angle, "
-            "standing alone on a plain flat mid grey background"
+            "on a solid bright magenta background"
         ),
         "world": "bright", "light": "object", "size": (448, 640),
         "cfg": 6.5, "steps": 30,
@@ -411,7 +416,7 @@ JOBS: dict[str, dict] = {
             "one cosy half timbered cottage with a steep terracotta red tiled "
             "roof, cream plaster walls and dark wooden beams, a small chimney, "
             "seen from high above at a three quarter angle, whole building, "
-            "standing alone on a plain flat grey background"
+            "on a solid bright magenta background"
         ),
         "world": "bright", "light": "object", "size": (576, 512),
         "cfg": 6.5, "steps": 30,
