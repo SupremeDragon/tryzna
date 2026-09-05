@@ -20,14 +20,20 @@ from PIL import Image, ImageDraw
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def cell_box(ox: float, oy: float, step: float, col: int, row: int, inset: int):
-    x0 = ox + col * step
-    y0 = oy + row * step
+def cell_box(ox, oy, sx: float, sy: float, col: int, row: int, inset: int):
+    """Крок окремо по кожній осі.
+
+    Здавалося б, зайве ускладнення. Але аркуші, які дав Міша, ЗГЕНЕРОВАНІ, а не
+    намальовані по пікселях: крок по горизонталі 191.65, по вертикалі 189.3.
+    Один спільний крок збиває сітку вже на п'ятому стовпці.
+    """
+    x0 = ox + col * sx
+    y0 = oy + row * sy
     return (
         int(round(x0)) + inset,
         int(round(y0)) + inset,
-        int(round(x0 + step)) - inset,
-        int(round(y0 + step)) - inset,
+        int(round(x0 + sx)) - inset,
+        int(round(y0 + sy)) - inset,
     )
 
 
@@ -35,7 +41,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Нарізати аркуш тайлсету")
     ap.add_argument("src")
     ap.add_argument("dst", help="тека для клітинок")
-    ap.add_argument("--step", type=float, default=102.4)
+    ap.add_argument("--step", nargs="+", type=float, default=[102.4],
+                    help="крок; одне число — квадратна сітка, два — по осях")
     ap.add_argument("--origin", nargs=2, type=float, default=[102.0, 204.0])
     ap.add_argument("--cols", type=int, default=18)
     ap.add_argument("--rows", type=int, default=16)
@@ -51,6 +58,8 @@ def main() -> None:
     dst = args.dst if os.path.isabs(args.dst) else os.path.join(ROOT, args.dst)
     img = Image.open(src).convert("RGB")
     ox, oy = args.origin
+    sx: float = args.step[0]
+    sy: float = args.step[1] if len(args.step) > 1 else sx
 
     if args.sheet:
         # Оглядовий аркуш із номерами: рядок-стовпець на кожній клітинці.
@@ -61,7 +70,7 @@ def main() -> None:
         d = ImageDraw.Draw(small)
         for row in range(args.rows):
             for col in range(args.cols):
-                x0, y0, x1, y1 = cell_box(ox, oy, args.step, col, row, 0)
+                x0, y0, x1, y1 = cell_box(ox, oy, sx, sy, col, row, 0)
                 d.rectangle(
                     [x0 // scale, y0 // scale, x1 // scale, y1 // scale],
                     outline=(255, 40, 40),
@@ -80,7 +89,7 @@ def main() -> None:
     made = 0
     for row in range(args.rows):
         for col in range(args.cols):
-            cell = img.crop(cell_box(ox, oy, args.step, col, row, args.inset))
+            cell = img.crop(cell_box(ox, oy, sx, sy, col, row, args.inset))
             if args.size:
                 cell = cell.resize((args.size, args.size), Image.LANCZOS)
             cell.save(os.path.join(dst, "c_%02d_%02d.png" % (row, col)))
