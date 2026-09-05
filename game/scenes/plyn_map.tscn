@@ -1,0 +1,17 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="TileSet" path="res://art/plyn/terrain.tres" id="1_set"]
+[ext_resource type="Script" path="res://scenes/plyn_map.gd" id="2_map"]
+
+[node name="Мапа" type="Node2D"]
+script = ExtResource("2_map")
+
+[node name="Камера" type="Camera2D" parent="."]
+zoom = Vector2(0.5, 0.5)
+
+[node name="Земля" type="TileMapLayer" parent="."]
+tile_set = ExtResource("1_set")
+
+[node name="Предмети" type="TileMapLayer" parent="."]
+y_sort_enabled = true
+tile_set = ExtResource("1_set")
