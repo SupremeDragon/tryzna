@@ -27,4 +27,18 @@ func _ready() -> void:
 		)
 		print("знято: " + NAMES[i])
 
+	# Третій знімок — ширший і НЕ одразу: селяни мають устигнути розійтися
+	# від своїх міток, інакше на знімку вони стоять там, де їх поставили, і
+	# зрозуміти, ходять вони чи ні, неможливо.
+	var cam: Camera2D = hero.get_node("Камера") as Camera2D
+	cam.zoom = Vector2(0.34, 0.34)
+	hero.position = ground.map_to_local(Vector2i(2, 2))
+	for f2: int in 260:
+		await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png(
+		"res://../builds/shots/17-village-alive.png"
+	)
+	print("знято: 17-village-alive.png")
+
 	get_tree().quit()

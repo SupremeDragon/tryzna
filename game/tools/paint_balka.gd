@@ -109,6 +109,11 @@ var _ground: TileMapLayer
 var _props: TileMapLayer
 var _footings: TileMapLayer
 var _kind: Dictionary = {}
+## Де стоятимуть селяни. Малювальник знає, де в нього двори; сцена, яку він
+## пише, — уже ні, тож місця треба лишити в ній самій, а не вгадувати потім.
+var _folk: Array[Vector2i] = []
+## Пороги хат: клітинка перед дверима, з якої заходять досередини.
+var _doors: Array[Vector2i] = []
 
 
 func _init() -> void:
@@ -138,8 +143,27 @@ func _init() -> void:
 
 	_paint()
 
-	for child: Node in root.get_children():
-		child.owner = root
+	var folk := Node2D.new()
+	folk.name = "Мешканці"
+	root.add_child(folk)
+	for i: int in _folk.size():
+		var mark := Marker2D.new()
+		mark.name = "Мешканець %d" % (i + 1)
+		mark.position = _ground.map_to_local(_folk[i])
+		folk.add_child(mark)
+
+	var doors := Node2D.new()
+	doors.name = "Двері"
+	root.add_child(doors)
+	for j: int in _doors.size():
+		var sill := Marker2D.new()
+		sill.name = "Поріг %d" % (j + 1)
+		sill.position = _ground.map_to_local(_doors[j])
+		doors.add_child(sill)
+
+	# Власника треба проставити ВСЬОМУ дереву, не тільки першому рівню: те, що
+	# без власника, у збережену сцену не потрапляє, і мітки зникали мовчки.
+	_own(root, root)
 
 	var packed := PackedScene.new()
 	if packed.pack(root) != OK:
@@ -151,11 +175,18 @@ func _init() -> void:
 		quit(1)
 		return
 
-	print("карта -> %s, землі %d, предметів %d, підмурків %d" % [
-		OUT, _ground.get_used_cells().size(),
-		_props.get_used_cells().size(), _footings.get_used_cells().size(),
+	print("карта -> %s, землі %d, предметів %d, підмурків %d, мешканців %d" % [
+		OUT, _ground.get_used_cells().size(), _props.get_used_cells().size(),
+		_footings.get_used_cells().size(), _folk.size(),
 	])
+	print("порогів: %d" % _doors.size())
 	quit()
+
+
+func _own(root: Node, node: Node) -> void:
+	for child: Node in node.get_children():
+		child.owner = root
+		_own(root, child)
 
 
 func _layer(
@@ -279,6 +310,11 @@ func _paint_square() -> void:
 	_props.set_cell(Vector2i(-2, 4), 0, CAMPFIRE)
 	_kind[Vector2i(4, 3)] = Kind.BUILDING
 	_kind[Vector2i(-2, 4)] = Kind.BUILDING
+
+	# Двоє на майдані: біля ятки й біля вогнища. Порожній майдан читається не
+	# як центр села, а як місце, звідки всі пішли.
+	_folk.append(Vector2i(3, 2))
+	_folk.append(Vector2i(-1, 3))
 
 	# Каменеписьмо на околиці майдану — натяк на те, що світ старший за село.
 	_props.set_cell(Vector2i(-4, -3), 0, _pick(RUNESTONE))
@@ -407,6 +443,17 @@ func _build_estate(corner: Vector2i, index: int) -> bool:
 
 	_walk(corner, last, side, gate, door)
 
+	# Поріг — клітинка ПЕРЕД дверима, бо в саму хату не ступиш: вона зайнята.
+	# Двері дивляться на глядача, тож поріг шукаємо з ближнього боку.
+	for near: Vector2i in [door + Vector2i(0, 1), door + Vector2i(1, 0)]:
+		if _kind_at(near) == Kind.YARD and _props.get_cell_source_id(near) == -1:
+			_doors.append(near)
+			break
+
+	# Господар. Стає на вільну клітинку свого двору й далі за пʼять клітинок
+	# від неї не відходить.
+	_settle_folk(corner, SIZE)
+
 	# Дрібнота у дворі: бочки, ящики, скриня. Двір без мотлоху нежилий — але й
 	# купа бочок упритул одна до одної не двір, а склад, тож поруч не ставимо.
 	for i2: int in range(2):
@@ -419,6 +466,16 @@ func _build_estate(corner: Vector2i, index: int) -> bool:
 			continue
 		_props.set_cell(spot, 0, _pick(YARD_STUFF))
 	return true
+
+
+## Ставить мешканця на першу-ліпшу вільну клітинку двору.
+func _settle_folk(corner: Vector2i, size: int) -> void:
+	for y: int in range(size - 2, 0, -1):
+		for x: int in range(size - 2, 0, -1):
+			var at: Vector2i = corner + Vector2i(x, y)
+			if _kind_at(at) == Kind.YARD and _props.get_cell_source_id(at) == -1:
+				_folk.append(at)
+				return
 
 
 ## Чи стоїть щось поруч. Дрібнота, поставлена впритул, читається як склад.
