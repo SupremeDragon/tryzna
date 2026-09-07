@@ -25,17 +25,18 @@ func fill_demo(radius: int = 7) -> void:
 	for y: int in range(-radius, radius + 1):
 		for x: int in range(-radius, radius + 1):
 			var here := Vector2i(x, y)
-			var kind := Vector2i(0, 0)          # трава
+			# Номери — з art/plyn/atlas_terrain-склад.txt.
+			var kind := Vector2i(3, 0)          # трава
 			if absi(x) + absi(y) > radius + 3:
-				kind = Vector2i(8, 0)           # вода по краях
+				kind = Vector2i(0, 2)           # вода по краях
 			elif y == 0:
-				kind = Vector2i(4, 0)           # ґрунтова смуга — дорога
+				kind = Vector2i(5, 2)           # ґрунт — дорога
 			ground.set_cell(here, 0, kind)
 
 	# Кілька дерев і парканів, щоб перевірити сортування.
 	for spot: Vector2i in [
 		Vector2i(-3, -3), Vector2i(2, -4), Vector2i(4, 2), Vector2i(-4, 3),
 	]:
-		props.set_cell(spot, 0, Vector2i(1, 3))     # дерево
+		props.set_cell(spot, 0, Vector2i(1, 0))     # дерево
 	for spot2: Vector2i in [Vector2i(-1, 2), Vector2i(0, 2), Vector2i(1, 2)]:
-		props.set_cell(spot2, 0, Vector2i(4, 3))    # паркан
+		props.set_cell(spot2, 0, Vector2i(2, 4))    # паркан
