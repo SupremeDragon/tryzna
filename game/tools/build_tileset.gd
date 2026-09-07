@@ -10,8 +10,8 @@ extends SceneTree
 const ATLAS := "res://art/plyn/atlas_terrain.png"
 const OUT := "res://art/plyn/terrain.tres"
 
-const COLS: int = 10
-const ROWS: int = 10
+const COLS: int = 12
+const ROWS: int = 11
 const CELL := Vector2i(192, 192)
 
 ## Розмір самого РОМБА, а не картинки. Картинка вища за ромб, бо в кубика
