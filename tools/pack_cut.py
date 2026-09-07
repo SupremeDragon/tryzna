@@ -28,37 +28,96 @@ def order_key(name: str):
     return (0, int(m.group(1))) if m else (1, name)
 
 
-def cut_background(img: Image.Image, tolerance: int) -> Image.Image:
-    rgb = img.convert("RGB")
-    a = np.asarray(rgb).astype(np.int32)
-    h, w = a.shape[:2]
-
-    # Тло беремо з кутів САМОЇ плитки: у кожного файлу свій відтінок.
-    k = max(min(w, h) // 12, 4)
-    corners = np.concatenate([
-        a[:k, :k].reshape(-1, 3), a[:k, -k:].reshape(-1, 3),
-        a[-k:, :k].reshape(-1, 3), a[-k:, -k:].reshape(-1, 3),
-    ])
-    bg = np.median(corners, axis=0)
-
+def key_alpha(a: np.ndarray, bg: np.ndarray, tolerance: float) -> np.ndarray:
     dist = np.sqrt(((a - bg) ** 2).sum(axis=2))
-    alpha = np.clip((dist - tolerance * 0.6) / (tolerance * 0.4), 0.0, 1.0)
+    return np.clip((dist - tolerance * 0.6) / (tolerance * 0.4), 0.0, 1.0)
 
-    # Дірки всередині заливаємо назад: сірий камінь близький до синьо-сірого
-    # тла, і ключ вигризає в ньому плями. Справжнє тло дотикається краю
-    # картинки, а пляма в камені — ні.
+
+def fill_holes(alpha: np.ndarray) -> np.ndarray:
+    """Повертає непрозорість тому, що всередині контуру.
+
+    Сірий камінь близький кольором до синьо-сірого тла, і ключ вигризає в ньому
+    плями. Справжнє тло дотикається краю картинки, а пляма в камені — ні, тому
+    розрізняємо їх за звʼязністю.
+    """
+    h, w = alpha.shape
     solid = (alpha > 0.5).astype(np.uint8)
     mark = Image.fromarray(((1 - solid) * 255).astype(np.uint8), "L")
     padded = Image.new("L", (w + 2, h + 2), 255)
     padded.paste(mark, (1, 1))
     ImageDraw.floodfill(padded, (0, 0), 128)
     outside = np.asarray(padded.crop((1, 1, w + 1, h + 1))) == 128
-    alpha = np.where(outside, alpha, 1.0)
+    return np.where(outside, alpha, 1.0)
+
+
+def cut_background(img: Image.Image, tolerance: int) -> Image.Image:
+    rgb = img.convert("RGB")
+    a = np.asarray(rgb).astype(np.int32)
+    h, w = a.shape[:2]
+
+    # Тло — НАЙЧАСТІШИЙ колір плитки, а не колір її кутів.
+    #
+    # Кути я пробував двічі й двічі помилявся: у вирізках Міші по краю лежить
+    # ТЕМНА ЛІНІЯ СІТКИ вихідного аркуша (близько 34,41,69), і саме її я брав
+    # за взірець тла. Справжнє тло синьо-сіре, близько 80,95,126. Через це ключ
+    # знімав не те, що треба, — а виглядало це як «ключ не працює».
+    #
+    # Найчастіший колір тут надійний: тла на плитці більше, ніж будь-чого.
+    from collections import Counter
+
+    # Беремо не весь кадр, а СМУГУ ПІД ТЕМНОЮ РАМКОЮ: від 4 до 14 пікселів від
+    # краю. У кадрі цілком може переважати сама плитка (у трьох із пʼятдесяти
+    # так і вийшло, і найчастішим кольором ставала трава), а в цій смузі тло є
+    # завжди — кубик до неї не дістає.
+    ring = np.concatenate([
+        a[4:14, :].reshape(-1, 3), a[-14:-4, :].reshape(-1, 3),
+        a[:, 4:14].reshape(-1, 3), a[:, -14:-4].reshape(-1, 3),
+    ])
+    bg = np.array(Counter(map(tuple, ring)).most_common(1)[0][0], dtype=np.float64)
+
+    # Поріг ПІДБИРАЄТЬСЯ для кожної плитки окремо, і міряється не колір, а
+    # РЕЗУЛЬТАТ: скільки картинки лишилося непрозорим після повного проходу.
+    #
+    # Спершу я перевіряв, чи прозорі кути, — і перевірка виявилася порожньою:
+    # кути це саме те місце, звідки береться взірець тла, тож вони прозорі
+    # завжди, за будь-якого порогу.
+    #
+    # Ізометричний кубик займає приблизно три пʼятих свого квадрата. Якщо після
+    # зняття лишилося більше чотирьох пʼятих — тло не знялося. Беремо перший
+    # поріг, за якого доля вкладається в межу.
+    # Межа знизу так само потрібна, як згори. Спершу я брав просто найменшу
+    # непрозорість — і три плитки зникли зовсім: найменша непрозорість буває
+    # саме тоді, коли ключ зʼїв усе. Кубик займає від третини до чотирьох
+    # пʼятих свого квадрата; беремо перший поріг, що влучає в цю вилку.
+    best: np.ndarray | None = None
+    best_miss: float = 1e9
+    for probe in (tolerance, 62, 80, 100, 125, 155, 195, 240):
+        dist = np.sqrt(((a - bg) ** 2).sum(axis=2))
+        alpha = np.clip((dist - probe * 0.6) / (probe * 0.4), 0.0, 1.0)
+        alpha = fill_holes(alpha)
+        share = float((alpha > 0.5).mean())
+
+        if 0.34 <= share <= 0.80:
+            best = alpha
+            break
+
+        # Наскільки далеко від вилки — щоб було що взяти, коли не влучив ніхто.
+        miss = (0.34 - share) if share < 0.34 else (share - 0.80)
+        if miss < best_miss:
+            best_miss = miss
+            best = alpha
+
+    # Темну рамку по краю стираємо окремо: вона не тло за кольором, тож ключ
+    # її не бере, і в грі вона малює тонкий темний прямокутник довкола плитки.
+    edge = 3
+    best[:edge, :] = 0.0
+    best[-edge:, :] = 0.0
+    best[:, :edge] = 0.0
+    best[:, -edge:] = 0.0
 
     out = rgb.convert("RGBA")
-    out.putalpha(Image.fromarray((alpha * 255).astype(np.uint8), "L"))
+    out.putalpha(Image.fromarray((best * 255).astype(np.uint8), "L"))
     return out
-
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Атлас із поштучно вирізаних плиток")
