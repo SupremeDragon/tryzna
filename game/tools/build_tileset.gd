@@ -11,7 +11,7 @@ const ATLAS := "res://art/plyn/atlas_terrain.png"
 const OUT := "res://art/plyn/terrain.tres"
 
 const COLS: int = 10
-const ROWS: int = 6
+const ROWS: int = 10
 const CELL := Vector2i(192, 192)
 
 ## Розмір самого РОМБА, а не картинки. Картинка вища за ромб, бо в кубика
