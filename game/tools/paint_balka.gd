@@ -84,16 +84,19 @@ const BUSH := Vector2i(0, 0)
 const ROCK: Array[Vector2i] = [Vector2i(9, 5), Vector2i(5, 6)]
 const MUSHROOMS: Array[Vector2i] = [Vector2i(1, 8), Vector2i(2, 8), Vector2i(3, 8)]
 
-## Стіни — кубики першого ярусу. Двері окремо: вони мусять дивитися на дорогу.
-const WALL: Array[Vector2i] = [Vector2i(7, 7), Vector2i(8, 7), Vector2i(9, 7)]
-const WALL_DOOR := Vector2i(6, 7)
-const WALL_PLAIN := Vector2i(5, 7)
-## Дахи — другий ярус.
-const ROOF: Array[Vector2i] = [Vector2i(10, 7), Vector2i(11, 7), Vector2i(0, 8)]
+## Готові будиночки. Це ЦІЛІ будівлі — стіни й дах разом, — а не самі дахи.
+## Я довго приймав їх за дахи й ставив поверх ящиків, ніби ті ящики стіни; від
+## того хата й виглядала як хата на коробках. Ящики повернулися у двір.
+const HOUSE: Array[Vector2i] = [Vector2i(10, 7), Vector2i(11, 7), Vector2i(0, 8)]
+## Камʼяний підмурок під житло: піднімає хату на ярус і дає їй опору.
+const FOOTING := Vector2i(9, 7)
+## Хижа — маленька будівля цілком в одній плитці.
 const HUT := Vector2i(2, 7)
 
+## Мотлох у дворі. Тільки дрібне: бочки, ящики, скриня. Кубики-ящики 5-7 і 6-7
+## сюди не годяться — вони заввишки з хату й у дворі читаються як друга будівля.
 const YARD_STUFF: Array[Vector2i] = [
-	Vector2i(7, 8), Vector2i(8, 8), Vector2i(0, 5), Vector2i(1, 5), Vector2i(2, 5),
+	Vector2i(7, 8), Vector2i(7, 8), Vector2i(8, 8), Vector2i(8, 8), Vector2i(0, 5),
 ]
 const CAMPFIRE := Vector2i(10, 8)
 const STALL := Vector2i(11, 8)
@@ -382,47 +385,61 @@ func _build_estate(corner: Vector2i, index: int) -> bool:
 		_kind[Vector2i(corner.x - 1, corner.y + k2)] = Kind.YARD
 		_kind[Vector2i(corner.x + k2, corner.y - 1)] = Kind.YARD
 
-	# Хата 2x2 посеред двору. Двері дивляться на хвіртку — інакше з двору в дім
-	# доводиться заходити крізь стіну.
-	var house: Vector2i = corner + Vector2i(2, 2)
-	var door: Vector2i = house + [
-		Vector2i(0, 1), Vector2i(1, 0), Vector2i(1, 0), Vector2i(0, 1),
-	][side]
-	var roof: Vector2i = _pick(ROOF)
-	for y3: int in range(2):
-		for x3: int in range(2):
-			var at3: Vector2i = house + Vector2i(x3, y3)
-			var wall: Vector2i = WALL_PLAIN
-			if at3 == door:
-				wall = WALL_DOOR
-			elif _rng.randf() < 0.6:
-				wall = _pick(WALL)
-			_props.set_cell(at3, 0, wall)
-			_roofs.set_cell(at3, 0, roof)
-			_kind[at3] = Kind.BUILDING
+	# Житло. Довша частина хати йде вздовж y: саме там гребені дахів сходяться
+	# в один, а не стають сходинками, як уздовж x. Розмір різний — у когось
+	# хата на дві клітинки, у когось на три, у заможнішого на чотири.
+	var shape: Vector2i = [
+		Vector2i(1, 2), Vector2i(1, 3), Vector2i(2, 2), Vector2i(1, 2),
+	][index % 4]
+	var home: Vector2i = corner + Vector2i(1, 1)
+	_dwelling(home, shape, HOUSE[index % HOUSE.size()])
 
-	# Хижа замість хати в кожної пʼятої: село не буває однаковим.
-	if index % 5 == 4:
-		for y4: int in range(2):
-			for x4: int in range(2):
-				var at4: Vector2i = house + Vector2i(x4, y4)
-				# Стерти клітинку — це erase_cell(), а не set_cell() з мінус
-				# одиницею: третій параметр там координата в атласі, не номер.
-				_props.erase_cell(at4)
-				_roofs.erase_cell(at4)
-		_props.set_cell(house, 0, HUT)
-		door = house
+	# Ганок — найближча до глядача клітинка хати. Звідти й починається стежка.
+	var door: Vector2i = home + shape - Vector2i(1, 1)
+
+	# Комора в глибині двору. У кожної пʼятої садиби замість хати сама хижа:
+	# село не буває однаковим.
+	var shed: Vector2i = corner + Vector2i(SIZE - 2, 1)
+	if _kind_at(shed) == Kind.YARD and _props.get_cell_source_id(shed) == -1:
+		# Комора — або хижа, або менший будиночок без підмурка: він на ярус
+		# нижчий за житло, і одразу видно, що головна тут хата.
+		_props.set_cell(shed, 0, HUT if index % 2 == 0 else HOUSE[index % HOUSE.size()])
+		_kind[shed] = Kind.BUILDING
 
 	_walk(corner, last, side, gate, door)
 
-	# Дрібнота у дворі: бочки, ящики, скриня. Двір без мотлоху нежилий.
+	# Дрібнота у дворі: бочки, ящики, скриня. Двір без мотлоху нежилий — але й
+	# купа бочок упритул одна до одної не двір, а склад, тож поруч не ставимо.
 	for i2: int in range(2):
 		var spot: Vector2i = corner + Vector2i(
 			_rng.randi_range(1, SIZE - 2), _rng.randi_range(1, SIZE - 2)
 		)
-		if _kind_at(spot) == Kind.YARD and _props.get_cell_source_id(spot) == -1:
-			_props.set_cell(spot, 0, _pick(YARD_STUFF))
+		if _kind_at(spot) != Kind.YARD or _props.get_cell_source_id(spot) != -1:
+			continue
+		if _crowded(spot):
+			continue
+		_props.set_cell(spot, 0, _pick(YARD_STUFF))
 	return true
+
+
+## Чи стоїть щось поруч. Дрібнота, поставлена впритул, читається як склад.
+func _crowded(at: Vector2i) -> bool:
+	for step: Vector2i in [
+		Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1),
+	]:
+		if _props.get_cell_source_id(at + step) != -1:
+			return true
+	return false
+
+
+## Житло: камʼяний підмурок першим ярусом, готовий будиночок другим.
+func _dwelling(corner: Vector2i, size: Vector2i, house: Vector2i) -> void:
+	for y: int in range(size.y):
+		for x: int in range(size.x):
+			var at: Vector2i = corner + Vector2i(x, y)
+			_props.set_cell(at, 0, FOOTING)
+			_roofs.set_cell(at, 0, house)
+			_kind[at] = Kind.BUILDING
 
 
 ## Паркан кладемо, тільки якщо клітинка вільна: у тісних місцях двори стають
