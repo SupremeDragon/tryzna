@@ -28,6 +28,20 @@ const DIAMOND := Vector2i(173, 128)
 ## 173 на 128. Поки я задавав його «як заведено», плитки не сходилися.
 const LIFT: int = 28
 
+## Плитки, які стоять НА камʼяному підмурку, а не на землі: готові будиночки.
+## Їм картинка піднімається ще на висоту бічних граней кубика.
+##
+## Робиться це саме тут, у плитці, а не окремим піднятим шаром, і ось чому.
+## Шар малюється весь одразу: усе з верхнього шару лягає поверх усього з
+## нижнього, хоч би де воно стояло. Поки хати жили окремим шаром, герой,
+## проходячи ПЕРЕД хатою, зникав за нею. А коли підняття зашите в плитку, хата
+## лежить у тому самому шарі, що й герой із деревами, і сортування по Y
+## розставляє їх як належить.
+const CUBE_LIFT: int = 54
+const RAISED: Array[Vector2i] = [
+	Vector2i(10, 7), Vector2i(11, 7), Vector2i(0, 8),
+]
+
 
 func _init() -> void:
 	var tex: Texture2D = load(ATLAS) as Texture2D
@@ -51,7 +65,9 @@ func _init() -> void:
 			var at := Vector2i(x, y)
 			source.create_tile(at)
 			var data: TileData = source.get_tile_data(at, 0)
-			data.texture_origin = Vector2i(0, LIFT)
+			data.texture_origin = Vector2i(
+				0, LIFT + (CUBE_LIFT if RAISED.has(at) else 0)
+			)
 			made += 1
 
 	set.add_source(source, 0)

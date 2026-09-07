@@ -20,6 +20,9 @@ const FENCE: Array[Vector2i] = [
 	Vector2i(4, 10), Vector2i(5, 10), Vector2i(6, 10),
 ]
 const BOAT := Vector2i(9, 8)
+## Готові будиночки. Вони намальовані піднятими на висоту підмурка, тож без
+## підмурка під ними просто висять у повітрі.
+const HOUSE: Array[Vector2i] = [Vector2i(10, 7), Vector2i(11, 7), Vector2i(0, 8)]
 const ROAD_HALF: int = 1
 
 
@@ -27,7 +30,7 @@ func _init() -> void:
 	var map: Node = (load(MAP) as PackedScene).instantiate()
 	var ground: TileMapLayer = map.get_node("Земля")
 	var props: TileMapLayer = map.get_node("Предмети")
-	var roofs: TileMapLayer = map.get_node("Дахи")
+	var footings: TileMapLayer = map.get_node("Підмурки")
 
 	# Човен у воді — єдине, чому там місце.
 	var in_water: int = 0
@@ -44,17 +47,17 @@ func _init() -> void:
 		if _on_road(cell2):
 			fence_on_road += 1
 
-	# Дах без стіни висів би просто в повітрі: другий ярус зсунутий угору на
-	# висоту бічних граней, і без кубика під ним це видно одразу.
-	var roof_adrift: int = 0
-	for cell3: Vector2i in roofs.get_used_cells():
-		if props.get_cell_source_id(cell3) == -1:
-			roof_adrift += 1
+	var house_adrift: int = 0
+	for cell3: Vector2i in props.get_used_cells():
+		if not HOUSE.has(props.get_cell_atlas_coords(cell3)):
+			continue
+		if footings.get_cell_source_id(cell3) == -1:
+			house_adrift += 1
 
-	var faults: int = in_water + fence_on_road + roof_adrift
+	var faults: int = in_water + fence_on_road + house_adrift
 	print("предметів у воді: %d" % in_water)
 	print("парканів на дорозі: %d" % fence_on_road)
-	print("дахів без стіни: %d" % roof_adrift)
+	print("хат без підмурка: %d" % house_adrift)
 	print("ПІДСУМОК: %s" % ("чисто" if faults == 0 else "Є ВАДИ"))
 	quit(0 if faults == 0 else 1)
 

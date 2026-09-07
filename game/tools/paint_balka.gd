@@ -12,9 +12,6 @@ extends SceneTree
 const TILE_SET := "res://art/plyn/terrain.tres"
 const OUT := "res://scenes/balka.tscn"
 
-## Наскільки один кубик підіймає наступний. Плитка — це куб: ромб зверху й
-## бічні грані під ним. Другий ярус ставиться рівно на висоту цих граней.
-const CUBE_LIFT: float = 54.0
 
 ## ЩО лежить на клітинці. Без цього дерева сідали у воду, а паркан перегороджував
 ## дорогу: перевірки «чи вже щось стоїть» замало, треба знати ЩО саме стоїть.
@@ -110,7 +107,7 @@ const ROAD_HALF: int = 1
 var _rng := RandomNumberGenerator.new()
 var _ground: TileMapLayer
 var _props: TileMapLayer
-var _roofs: TileMapLayer
+var _footings: TileMapLayer
 var _kind: Dictionary = {}
 
 
@@ -132,10 +129,12 @@ func _init() -> void:
 	root.add_child(cam)
 
 	_ground = _layer(root, "Земля", set, Vector2.ZERO, false)
+	# Підмурки окремим шаром, і саме ПІД предметами. Це не другий ярус: підняття
+	# зашите в самі плитки хат (tools/build_tileset.gd), тож хата лежить у тому
+	# самому шарі, що й дерева з героєм, і сортується разом із ними. Підмурку
+	# сортування не треба: під ним нічого не ходить.
+	_footings = _layer(root, "Підмурки", set, Vector2.ZERO, false)
 	_props = _layer(root, "Предмети", set, Vector2.ZERO, true)
-	# Другий ярус: усе, що стоїть НА чомусь. Зсув угору рівно на висоту
-	# бічних граней кубика — так дах сідає на стіни, а не поруч із ними.
-	_roofs = _layer(root, "Дахи", set, Vector2(0.0, -CUBE_LIFT), true)
 
 	_paint()
 
@@ -152,9 +151,9 @@ func _init() -> void:
 		quit(1)
 		return
 
-	print("карта -> %s, землі %d, предметів %d, дахів %d" % [
+	print("карта -> %s, землі %d, предметів %d, підмурків %d" % [
 		OUT, _ground.get_used_cells().size(),
-		_props.get_used_cells().size(), _roofs.get_used_cells().size(),
+		_props.get_used_cells().size(), _footings.get_used_cells().size(),
 	])
 	quit()
 
@@ -401,9 +400,9 @@ func _build_estate(corner: Vector2i, index: int) -> bool:
 	# село не буває однаковим.
 	var shed: Vector2i = corner + Vector2i(SIZE - 2, 1)
 	if _kind_at(shed) == Kind.YARD and _props.get_cell_source_id(shed) == -1:
-		# Комора — або хижа, або менший будиночок без підмурка: він на ярус
-		# нижчий за житло, і одразу видно, що головна тут хата.
-		_props.set_cell(shed, 0, HUT if index % 2 == 0 else HOUSE[index % HOUSE.size()])
+		# Комора — хижа: вона стоїть просто на землі, без підмурка, і вже цим
+		# нижча за житло. Одразу видно, котра тут головна хата.
+		_props.set_cell(shed, 0, HUT)
 		_kind[shed] = Kind.BUILDING
 
 	_walk(corner, last, side, gate, door)
@@ -437,8 +436,8 @@ func _dwelling(corner: Vector2i, size: Vector2i, house: Vector2i) -> void:
 	for y: int in range(size.y):
 		for x: int in range(size.x):
 			var at: Vector2i = corner + Vector2i(x, y)
-			_props.set_cell(at, 0, FOOTING)
-			_roofs.set_cell(at, 0, house)
+			_footings.set_cell(at, 0, FOOTING)
+			_props.set_cell(at, 0, house)
 			_kind[at] = Kind.BUILDING
 
 

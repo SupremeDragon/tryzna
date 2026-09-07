@@ -129,6 +129,22 @@ PROP_TAIL = (
     "nothing under the object, no ground, no grass, no scene, no landscape"
 )
 
+# Хвіст для ПЕРСОНАЖІВ. Окремий від хвоста предметів, бо предмет має лежати
+# посеред кадру цілим, а персонаж — стояти на весь зріст і читатися з десяти
+# пікселів. Пропорції задаємо словами прямо: у наборі Міші люди «двоголові»,
+# з великою головою й коротким тілом, і без цієї вказівки модель малює
+# анатомічно правильну людину, яка поруч із його селянами виглядає чужою.
+#
+# Тло знову ЯСКРАВО-РОЖЕВЕ, з тієї ж причини, що й у предметів: рожевого в
+# персонажах немає ніде, тож вирізка не з'їсть ані шкіру, ані одяг.
+CHAR_TAIL = (
+    "single character sprite for a 2d game, 16-bit pixel art, chunky visible pixels, "
+    "thick dark outline, limited palette, flat cel shading, "
+    "big head short body chibi proportions, standing straight, full body visible, "
+    "cut out on a solid flat bright magenta pink background, "
+    "no ground, no shadow, no scene, no landscape, no text"
+)
+
 # Хвіст для ПЛИТОК. Окремий від хвоста сцен навмисно: слова «затишне село»
 # змушують модель малювати краєвид, а плитці потрібне протилежне — рівна
 # поверхня без глибини, без тіней і без композиції.
@@ -154,7 +170,41 @@ def compose(subject: str, world: str, light: str, tail: str = "") -> str:
 # Іменовані завдання. Тримаються тут, а не в голові, щоб генерацію можна було
 # ПОВТОРИТИ через місяць і отримати те саме.
 
+def _hero(view: str, extra: str = "") -> dict:
+    """Замовлення на героя в одному ракурсі.
+
+    Чотири ракурси — це не чотири різні замовлення, а одне з різним словом
+    про поворот: усе інше в описі мусить збігатися ДОСЛІВНО, інакше в кожному
+    ракурсі виходить інший хлопець.
+    """
+    return {
+        "subject": (
+            "a young village boy, short messy red hair, plain blue tunic with a belt, "
+            "brown trousers, simple leather boots, empty hands, calm face, "
+            + view + (", " + extra if extra else "")
+        ),
+        "world": "bright",
+        "light": "object",
+        "size": (512, 512),
+        "cfg": 7.0,
+        "steps": 28,
+        "tail": CHAR_TAIL,
+        "extra_negative": (
+            "weapon, sword, staff, shield, armour, cape, hat, "
+            "realistic proportions, tall thin body, adult man, muscular, "
+            "multiple characters, cropped head, cropped feet, sitting, "
+            "photo, 3d render, blurry, soft focus, anti-aliased, smooth gradient"
+        ),
+    }
+
+
 JOBS: dict[str, dict] = {
+    "hero-front": _hero("seen from the front, facing the viewer"),
+    "hero-back": _hero(
+        "seen from directly behind, back view, facing away from the viewer, "
+        "back of the head, no face visible"
+    ),
+    "hero-side": _hero("seen from the side, exact side profile view, walking to the right"),
     # Найдальший шар Ниці. Головне про нього: власної перспективи він мати
     # НЕ повинен. Глибину в кадрі дають стовпи, що стоять попереду; якщо
     # задник теж почне тікати в точку сходу, два ракурси битимуться.
